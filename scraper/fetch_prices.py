@@ -114,6 +114,21 @@ def extract_matches(result):
     return matches
 
 
+def check_connection():
+    """Fail loudly if the secret or schema access is broken, instead of silently
+    no-oping for months once the horizon skips every date pair anyway."""
+    url = f"{SUPABASE_URL}/rest/v1/price_samples?select=id&limit=1"
+    headers = {
+        "apikey": SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SERVICE_ROLE_KEY}",
+        "Accept-Profile": SUPABASE_SCHEMA,
+    }
+    resp = requests.get(url, headers=headers, timeout=30)
+    if resp.status_code >= 300:
+        raise RuntimeError(f"Supabase connection check failed ({resp.status_code}): {resp.text}")
+    print("Supabase connection check ok.")
+
+
 def upsert_rows(rows):
     if not rows:
         return
@@ -134,6 +149,8 @@ def main():
     if not SERVICE_ROLE_KEY:
         print("SUPABASE_SERVICE_ROLE_KEY is not set", file=sys.stderr)
         sys.exit(1)
+
+    check_connection()
 
     today = date.today()
     if today > PROJECT_END:
