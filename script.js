@@ -9,8 +9,6 @@ const TRIP_YEAR = 2027;
 const MATRIX_START = new Date(Date.UTC(TRIP_YEAR, 4, 1)); // May 1
 const MATRIX_END = new Date(Date.UTC(TRIP_YEAR, 5, 30)); // June 30
 const DURATIONS = [10, 11, 12, 13, 14];
-const LUFTHANSA = "Lufthansa";
-const SAS = "Scandinavian Airlines";
 
 function toISO(d) {
   return d.toISOString().slice(0, 10);
@@ -36,13 +34,6 @@ function allDepartureDates() {
   return dates;
 }
 
-function cheapestFor(raw_matches, airlineName) {
-  if (!raw_matches) return null;
-  const matches = raw_matches.filter((m) => m.airlines.includes(airlineName));
-  if (!matches.length) return null;
-  return Math.min(...matches.map((m) => m.price));
-}
-
 function lerpColor(hexA, hexB, t) {
   const a = hexA.match(/\w\w/g).map((h) => parseInt(h, 16));
   const b = hexB.match(/\w\w/g).map((h) => parseInt(h, 16));
@@ -64,7 +55,7 @@ function svgns(tag) {
   return document.createElementNS("http://www.w3.org/2000/svg", tag);
 }
 
-// ---------- Heatmap ----------
+// ---------- Heatmap (latest snapshot, overview across all departure dates) ----------
 
 let latestDayRows = []; // rows for the most recent sample_date, all durations
 
@@ -84,7 +75,7 @@ async function loadLatestSnapshot() {
   const latestDate = latestRows[0].sample_date;
   const { data, error } = await supabase
     .from("price_samples")
-    .select("departure_date,return_date,query_status,raw_matches")
+    .select("departure_date,return_date,query_status,lufthansa_price,sas_price")
     .eq("sample_date", latestDate);
 
   if (error) {
@@ -102,7 +93,7 @@ function renderHeatmapLegend() {
   el.innerHTML = `
     <span><span class="swatch" style="background:${getVar("--seq-100")}"></span>Cheaper</span>
     <span><span class="swatch" style="background:${getVar("--seq-700")}"></span>More expensive</span>
-    <span><span class="swatch" style="background:${getVar("--gridline")}"></span>No data yet</span>
+    <span><span class="swatch" style="background:${getVar("--gridline")}"></span>No price shown that day</span>
   `;
 }
 
@@ -129,18 +120,16 @@ function renderHeatmap(nights) {
   for (const dep of dates) {
     const row = byDeparture[dep];
     if (!row) continue;
-    const lh = cheapestFor(row.raw_matches, LUFTHANSA);
-    const sk = cheapestFor(row.raw_matches, SAS);
-    if (lh != null) prices.push(lh);
-    if (sk != null) prices.push(sk);
+    if (row.lufthansa_price != null) prices.push(row.lufthansa_price);
+    if (row.sas_price != null) prices.push(row.sas_price);
   }
   const min = prices.length ? Math.min(...prices) : 0;
   const max = prices.length ? Math.max(...prices) : 1;
 
   const tooltip = document.getElementById("heatmapTooltip");
   const rows = [
-    { label: "Lufthansa", key: LUFTHANSA },
-    { label: "SAS", key: SAS },
+    { label: "Lufthansa", key: "lufthansa_price" },
+    { label: "SAS", key: "sas_price" },
   ];
 
   rows.forEach((r, rIdx) => {
@@ -153,7 +142,7 @@ function renderHeatmap(nights) {
 
     dates.forEach((dep, cIdx) => {
       const row = byDeparture[dep];
-      const price = row ? cheapestFor(row.raw_matches, r.key) : null;
+      const price = row ? row[r.key] : null;
       const x = labelW + cIdx * cellW;
       const y = rowGap * (rIdx + 1) + cellH * rIdx;
 
@@ -172,9 +161,9 @@ function renderHeatmap(nights) {
         if (price != null) {
           tooltip.textContent = `${r.label} - ${dep}: $${price}`;
         } else if (!row) {
-          tooltip.textContent = `${dep}: not open for booking yet`;
+          tooltip.textContent = `${dep}: not checked yet`;
         } else {
-          tooltip.textContent = `${r.label} - ${dep}: no matching itinerary found`;
+          tooltip.textContent = `${r.label} - ${dep}: no price shown that day`;
         }
       });
       rect.addEventListener("mouseleave", () => {
@@ -186,16 +175,16 @@ function renderHeatmap(nights) {
   });
 }
 
-// ---------- Line chart ----------
+// ---------- Line chart + table (one trip's full sampling history) ----------
 
-async function renderLineChart(departureDate, nights) {
+async function renderTripHistory(departureDate, nights) {
   const returnDate = toISO(addDays(new Date(departureDate), nights));
   const statusEl = document.getElementById("lineStatus");
   statusEl.textContent = "Loading...";
 
   const { data, error } = await supabase
     .from("price_samples")
-    .select("sample_date,query_status,raw_matches")
+    .select("sample_date,query_status,lufthansa_price,sas_price")
     .eq("departure_date", departureDate)
     .eq("return_date", returnDate)
     .order("sample_date", { ascending: true });
@@ -207,18 +196,27 @@ async function renderLineChart(departureDate, nights) {
   if (!data.length) {
     statusEl.textContent = "No samples recorded yet for this trip.";
     document.getElementById("lineChart").innerHTML = "";
+    document.getElementById("historyTableBody").innerHTML = "";
     return;
   }
 
   statusEl.textContent = `${data.length} daily samples from ${data[0].sample_date} to ${data[data.length - 1].sample_date}. Departing ${departureDate}, returning ${returnDate}.`;
 
-  const points = data.map((row) => ({
-    date: row.sample_date,
-    lh: row.query_status === "ok" ? cheapestFor(row.raw_matches, LUFTHANSA) : null,
-    sk: row.query_status === "ok" ? cheapestFor(row.raw_matches, SAS) : null,
-  }));
+  drawLineChart(data);
+  renderHistoryTable(data);
+}
 
-  drawLineChart(points);
+function renderHistoryTable(rows) {
+  const tbody = document.getElementById("historyTableBody");
+  tbody.innerHTML = "";
+  // most recent sample first, since that's what people actually check
+  [...rows].reverse().forEach((row) => {
+    const tr = document.createElement("tr");
+    const lh = row.lufthansa_price != null ? `$${row.lufthansa_price}` : "-";
+    const sk = row.sas_price != null ? `$${row.sas_price}` : "-";
+    tr.innerHTML = `<td>${row.sample_date}</td><td>${lh}</td><td>${sk}</td>`;
+    tbody.appendChild(tr);
+  });
 }
 
 function drawLineChart(points) {
@@ -232,14 +230,14 @@ function drawLineChart(points) {
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.innerHTML = "";
 
-  const allPrices = points.flatMap((p) => [p.lh, p.sk]).filter((v) => v != null);
+  const allPrices = points.flatMap((p) => [p.lufthansa_price, p.sas_price]).filter((v) => v != null);
   if (!allPrices.length) {
     const t = svgns("text");
     t.setAttribute("x", width / 2);
     t.setAttribute("y", height / 2);
     t.setAttribute("text-anchor", "middle");
     t.setAttribute("class", "axis-label");
-    t.textContent = "No SAS/Lufthansa fares found yet for this trip";
+    t.textContent = "No Lufthansa/SAS price shown yet for this trip";
     svg.appendChild(t);
     return;
   }
@@ -250,7 +248,6 @@ function drawLineChart(points) {
   const x = (i) => margin.left + (innerW * i) / Math.max(points.length - 1, 1);
   const y = (v) => margin.top + innerH - (innerH * (v - minP)) / (maxP - minP);
 
-  // gridlines + y labels
   const ticks = 4;
   for (let i = 0; i <= ticks; i++) {
     const val = minP + ((maxP - minP) * i) / ticks;
@@ -272,14 +269,13 @@ function drawLineChart(points) {
     svg.appendChild(label);
   }
 
-  // x labels (first, middle, last)
   [0, Math.floor((points.length - 1) / 2), points.length - 1].forEach((i) => {
     const label = svgns("text");
     label.setAttribute("x", x(i));
     label.setAttribute("y", height - margin.bottom + 16);
     label.setAttribute("text-anchor", "middle");
     label.setAttribute("class", "axis-label");
-    label.textContent = points[i].date;
+    label.textContent = points[i].sample_date;
     svg.appendChild(label);
   });
 
@@ -304,10 +300,9 @@ function drawLineChart(points) {
     svg.appendChild(path);
   }
 
-  pathFor("lh", getVar("--series-lufthansa"));
-  pathFor("sk", getVar("--series-sas"));
+  pathFor("lufthansa_price", getVar("--series-lufthansa"));
+  pathFor("sas_price", getVar("--series-sas"));
 
-  // hover layer
   const tooltip = document.getElementById("lineTooltip");
   const hitArea = svgns("rect");
   hitArea.setAttribute("x", margin.left);
@@ -326,7 +321,7 @@ function drawLineChart(points) {
     tooltip.style.display = "block";
     tooltip.style.left = e.pageX + 12 + "px";
     tooltip.style.top = e.pageY + 12 + "px";
-    tooltip.innerHTML = `${p.date}<br>Lufthansa: ${p.lh != null ? "$" + p.lh : "-"}<br>SAS: ${p.sk != null ? "$" + p.sk : "-"}`;
+    tooltip.innerHTML = `${p.sample_date}<br>Lufthansa: ${p.lufthansa_price != null ? "$" + p.lufthansa_price : "-"}<br>SAS: ${p.sas_price != null ? "$" + p.sas_price : "-"}`;
   });
   hitArea.addEventListener("mouseleave", () => {
     tooltip.style.display = "none";
@@ -369,10 +364,10 @@ async function init() {
 
   const departureSelect = document.getElementById("departureSelect");
   const durationSelect2 = document.getElementById("durationSelect2");
-  const refreshLineChart = () => renderLineChart(departureSelect.value, Number(durationSelect2.value));
-  departureSelect.addEventListener("change", refreshLineChart);
-  durationSelect2.addEventListener("change", refreshLineChart);
-  refreshLineChart();
+  const refresh = () => renderTripHistory(departureSelect.value, Number(durationSelect2.value));
+  departureSelect.addEventListener("change", refresh);
+  durationSelect2.addEventListener("change", refresh);
+  refresh();
 }
 
 init();

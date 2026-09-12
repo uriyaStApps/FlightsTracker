@@ -1,122 +1,115 @@
 """
-Daily TLV<->OSL price sampler for SAS + Lufthansa.
+Daily TLV<->OSL price sampler for Lufthansa + SAS, via Kayak (headless browser).
 
 Runs once a day (via GitHub Actions). For every (departure_date, return_date)
-pair in the May-June 2027 trip matrix, queries Google Flights (via fast-flights),
-keeps only itineraries that include SAS or Lufthansa, and upserts one row per
-pair per day into Supabase.
+pair in the May-June 2027 trip matrix, loads the Kayak search results page and
+reads whatever price Kayak's own "cheapest per airline" sidebar shows for
+Lufthansa and SAS right now.
 
-Each day's snapshot is a one-shot, unrepeatable observation -- if a query fails
-or the route isn't bookable yet that far out, we record that explicitly rather
-than silently skipping, and we keep the raw matched-flight list (not just the
-cheapest number) since we can never re-sample a past day.
+SAS rarely operates this route itself (it shows up only via occasional
+interline/codeshare fares), so its price is often simply not present in that
+sidebar on a given day -- that's a real fact about the market, not a scraper
+bug, and is recorded as such (null) rather than forced. Each day's snapshot is
+a one-shot, unrepeatable observation, so a compact snapshot of the whole
+top-priced-airlines list is kept alongside the two prices we care about.
 """
 
 import json
 import os
 import random
+import re
 import sys
 import time
 from datetime import date, timedelta
 
 import requests
-from fast_flights import FlightQuery, Passengers, create_query, get_flights
+from playwright.sync_api import sync_playwright
 
 ORIGIN = "TLV"
 DEST = "OSL"
-TARGET_AIRLINES = {"Lufthansa", "Scandinavian Airlines"}
 
 TRIP_YEAR = 2027
 MATRIX_START = date(TRIP_YEAR, 5, 1)
 MATRIX_END = date(TRIP_YEAR, 6, 30)
 DURATIONS_NIGHTS = [10, 11, 12, 13, 14]
 
-# Empirically this route only returns real data ~120-125 days out (tested
-# 2026-09-12: boundary fell around 2027-01-11/12). Add a safety margin so we
-# don't burn requests on dates that are essentially guaranteed to fail yet.
-HORIZON_DAYS = 150
-
-# Once we're past the trip's own booking window there's nothing left to learn --
-# the project is defined to end here regardless of what the workflow schedule does.
+# Project is defined to end here regardless of the workflow's own schedule.
 PROJECT_END = date(2027, 5, 1)
 
 SUPABASE_URL = "https://pualpwrkztjzhgpaqudm.supabase.co"
 SUPABASE_SCHEMA = "tlv_osl_prices"
 SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
-MIN_SLEEP_SECONDS = 1.0
-MAX_SLEEP_SECONDS = 2.5
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36"
+
+MIN_SLEEP_SECONDS = 1.5
+MAX_SLEEP_SECONDS = 3.0
+
+AIRLINE_ROW_JS = """
+() => {
+    const out = [];
+    document.querySelectorAll('input[id^="valueSetFilter-vertical-airlines-"]').forEach(inp => {
+        const code = inp.id.split('-').pop();
+        const row = inp.closest('.hYzH');
+        const label = row ? row.querySelector('.hYzH-checkbox-label') : null;
+        const priceEl = row ? row.querySelector('.hYzH-price') : null;
+        out.push({
+            code,
+            name: label ? label.textContent : null,
+            price: priceEl ? priceEl.textContent : null,
+        });
+    });
+    return out;
+}
+"""
 
 
-def build_date_pairs(today: date):
+def build_date_pairs():
     pairs = []
     d = MATRIX_START
     while d <= MATRIX_END:
         for nights in DURATIONS_NIGHTS:
             pairs.append((d, d + timedelta(days=nights)))
         d += timedelta(days=1)
-
-    eligible, skipped = [], 0
-    for dep, ret in pairs:
-        if (dep - today).days <= HORIZON_DAYS:
-            eligible.append((dep, ret))
-        else:
-            skipped += 1
-    return eligible, skipped
+    return pairs
 
 
-def query_one(dep: date, ret: date):
-    q = create_query(
-        flights=[
-            FlightQuery(date=dep.isoformat(), from_airport=ORIGIN, to_airport=DEST),
-            FlightQuery(date=ret.isoformat(), from_airport=DEST, to_airport=ORIGIN),
-        ],
-        seat="economy",
-        trip="round-trip",
-        passengers=Passengers(adults=1),
-        currency="USD",
-    )
-    return get_flights(q)
+def parse_price(text):
+    if not text:
+        return None
+    m = re.search(r"[\d,]+", text)
+    return int(m.group(0).replace(",", "")) if m else None
 
 
-def to_row(sample_date: date, dep: date, ret: date, status: str, matches=None):
-    matches = matches or []
-    row = {
-        "sample_date": sample_date.isoformat(),
-        "departure_date": dep.isoformat(),
-        "return_date": ret.isoformat(),
-        "query_status": status,
-        "match_count": len(matches),
-        "cheapest_price": None,
-        "cheapest_airline": None,
-        "currency": "USD",
-        "raw_matches": matches or None,
+def query_one(page, dep: date, ret: date):
+    url = f"https://www.kayak.com/flights/{ORIGIN}-{DEST}/{dep.isoformat()}/{ret.isoformat()}"
+    page.goto(url, timeout=60000)
+    try:
+        page.wait_for_load_state("networkidle", timeout=25000)
+    except Exception:
+        pass
+    page.wait_for_timeout(4000)
+
+    rows = page.evaluate(AIRLINE_ROW_JS)
+
+    body_text = page.inner_text("body")
+    total_match = re.search(r"of ([\d,]+) flights", body_text)
+    total_flights = int(total_match.group(1).replace(",", "")) if total_match else None
+
+    priced = [r for r in rows if r["price"]]
+    for r in priced:
+        r["price"] = parse_price(r["price"])
+
+    by_code = {r["code"]: r["price"] for r in rows if r["price"]}
+    return {
+        "lufthansa_price": by_code.get("LH"),
+        "sas_price": by_code.get("SK"),
+        "total_flights": total_flights,
+        "top_airlines": priced,
     }
-    if matches:
-        cheapest = min(matches, key=lambda m: m["price"])
-        row["cheapest_price"] = cheapest["price"]
-        row["cheapest_airline"] = ", ".join(cheapest["airlines"])
-    return row
-
-
-def extract_matches(result):
-    matches = []
-    for f in result:
-        if TARGET_AIRLINES.intersection(f.airlines):
-            matches.append(
-                {
-                    "type": f.type,
-                    "airlines": f.airlines,
-                    "price": f.price,
-                    "stops": len(f.flights) - 1,
-                }
-            )
-    return matches
 
 
 def check_connection():
-    """Fail loudly if the secret or schema access is broken, instead of silently
-    no-oping for months once the horizon skips every date pair anyway."""
     url = f"{SUPABASE_URL}/rest/v1/price_samples?select=id&limit=1"
     headers = {
         "apikey": SERVICE_ROLE_KEY,
@@ -157,32 +150,59 @@ def main():
         print(f"Today ({today}) is past the project end date ({PROJECT_END}). Nothing to do.")
         return
 
-    pairs, skipped = build_date_pairs(today)
-    print(f"Today: {today}. {len(pairs)} date pairs in horizon, {skipped} skipped (too far out).")
+    pairs = build_date_pairs()
+    print(f"Today: {today}. Querying {len(pairs)} date pairs via Kayak.")
 
     rows = []
     ok_count = 0
     no_data_count = 0
-    matched_count = 0
 
-    for dep, ret in pairs:
-        try:
-            result = query_one(dep, ret)
-            matches = extract_matches(result)
-            rows.append(to_row(today, dep, ret, "ok", matches))
-            ok_count += 1
-            if matches:
-                matched_count += 1
-        except Exception as e:
-            print(f"  no data for {dep} / {ret}: {type(e).__name__}: {e}")
-            rows.append(to_row(today, dep, ret, "no_data"))
-            no_data_count += 1
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(user_agent=USER_AGENT, viewport={"width": 1400, "height": 1200})
 
-        time.sleep(random.uniform(MIN_SLEEP_SECONDS, MAX_SLEEP_SECONDS))
+        for dep, ret in pairs:
+            try:
+                result = query_one(page, dep, ret)
+                rows.append(
+                    {
+                        "sample_date": today.isoformat(),
+                        "departure_date": dep.isoformat(),
+                        "return_date": ret.isoformat(),
+                        "query_status": "ok",
+                        "lufthansa_price": result["lufthansa_price"],
+                        "sas_price": result["sas_price"],
+                        "total_flights": result["total_flights"],
+                        "top_airlines": result["top_airlines"] or None,
+                        "currency": "USD",
+                    }
+                )
+                ok_count += 1
+            except Exception as e:
+                print(f"  no data for {dep} / {ret}: {type(e).__name__}: {e}")
+                rows.append(
+                    {
+                        "sample_date": today.isoformat(),
+                        "departure_date": dep.isoformat(),
+                        "return_date": ret.isoformat(),
+                        "query_status": "no_data",
+                        "lufthansa_price": None,
+                        "sas_price": None,
+                        "total_flights": None,
+                        "top_airlines": None,
+                        "currency": "USD",
+                    }
+                )
+                no_data_count += 1
 
-    print(f"Done: {ok_count} ok ({matched_count} with SAS/Lufthansa matches), {no_data_count} no_data.")
+            time.sleep(random.uniform(MIN_SLEEP_SECONDS, MAX_SLEEP_SECONDS))
 
-    # Send in chunks so one bad batch doesn't lose everything.
+        browser.close()
+
+    lh_found = sum(1 for r in rows if r["lufthansa_price"] is not None)
+    sas_found = sum(1 for r in rows if r["sas_price"] is not None)
+    print(f"Done: {ok_count} ok, {no_data_count} no_data. Lufthansa priced: {lh_found}, SAS priced: {sas_found}.")
+
     CHUNK = 50
     for i in range(0, len(rows), CHUNK):
         upsert_rows(rows[i : i + CHUNK])

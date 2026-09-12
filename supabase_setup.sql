@@ -1,5 +1,8 @@
--- TlvOsloPriceTracker: daily TLV<->OSL price samples for SAS + Lufthansa
+-- NorwayFlightsTracker2028: daily TLV<->OSL price samples for Lufthansa + SAS, via Kayak
 -- Run this whole file once in Supabase Dashboard -> SQL Editor -> New query -> Run
+-- (Replaces the earlier Google-Flights-based schema -- table had 0 rows, safe to drop.)
+
+drop table if exists tlv_osl_prices.price_samples;
 
 create schema if not exists tlv_osl_prices;
 grant usage on schema tlv_osl_prices to anon, authenticated;
@@ -10,12 +13,12 @@ create table tlv_osl_prices.price_samples (
   sampled_at timestamptz not null default now(),         -- exact fetch time
   departure_date date not null,                          -- TLV -> OSL date
   return_date date not null,                             -- OSL -> TLV date
-  query_status text not null,                            -- 'ok' (query succeeded, may have 0 matches) | 'no_data' (fetch failed -- usually because the route isn't bookable that far out yet)
-  match_count int not null default 0,                    -- number of SAS/Lufthansa itineraries found
-  cheapest_price numeric,                                -- cheapest matched price (null if none/error)
-  cheapest_airline text,                                 -- which airline(s) gave the cheapest match
+  query_status text not null,                            -- 'ok' (page loaded, may still have null prices) | 'no_data' (page load/parse failed)
+  lufthansa_price numeric,                               -- null if Lufthansa wasn't in Kayak's top-priced airline list that day
+  sas_price numeric,                                     -- null if SAS wasn't in Kayak's top-priced airline list that day (common -- SAS mostly reaches this route via codeshare)
+  total_flights int,                                     -- total itineraries Kayak reported for context
+  top_airlines jsonb,                                    -- snapshot of the airlines Kayak did show a price for that day
   currency text not null default 'USD',
-  raw_matches jsonb,                                     -- full list of matched flights for this query (kept since each day's snapshot is unbounded)
   unique (sample_date, departure_date, return_date)
 );
 
