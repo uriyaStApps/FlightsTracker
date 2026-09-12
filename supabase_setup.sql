@@ -27,3 +27,8 @@ create policy "anon can read price samples" on tlv_osl_prices.price_samples
   for select to anon, authenticated using (true);
 
 grant select on tlv_osl_prices.price_samples to anon, authenticated;
+
+-- service_role bypasses RLS but still needs an explicit schema/table grant --
+-- it is NOT automatic just because it's the privileged role.
+grant usage on schema tlv_osl_prices to service_role;
+grant select, insert, update on tlv_osl_prices.price_samples to service_role;
