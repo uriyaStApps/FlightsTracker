@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TLV-OSL Price Tracker</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="wrap">
+    <h1>TLV &harr; OSL Price Tracker</h1>
+    <p class="subtitle">Daily SAS &amp; Lufthansa fares for May-June 2027, sampled once a day to find the best time to book (a proxy model for a May/June 2028 trip).</p>
+
+    <div class="card">
+      <h2>Cheapest fare by departure date</h2>
+      <p class="hint">Latest snapshot. Color = cheaper fare found so far for that day. Pick a trip length below.</p>
+      <div class="controls">
+        <label>Trip length
+          <select id="durationSelect"></select>
+        </label>
+      </div>
+      <div class="legend" id="heatmapLegend"></div>
+      <div class="chart-shell">
+        <svg id="heatmap"></svg>
+        <div class="tooltip" id="heatmapTooltip"></div>
+      </div>
+      <p class="status-line" id="heatmapStatus"></p>
+    </div>
+
+    <div class="card">
+      <h2>Price over time for one trip</h2>
+      <p class="hint">How the fare for this specific departure/return pair has moved since we started sampling.</p>
+      <div class="controls">
+        <label>Departure date
+          <select id="departureSelect"></select>
+        </label>
+        <label>Trip length
+          <select id="durationSelect2"></select>
+        </label>
+      </div>
+      <div class="legend">
+        <span><span class="swatch" style="background:var(--series-lufthansa)"></span>Lufthansa</span>
+        <span><span class="swatch" style="background:var(--series-sas)"></span>SAS</span>
+      </div>
+      <div class="chart-shell">
+        <svg id="lineChart"></svg>
+        <div class="tooltip" id="lineTooltip"></div>
+      </div>
+      <p class="status-line" id="lineStatus"></p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
