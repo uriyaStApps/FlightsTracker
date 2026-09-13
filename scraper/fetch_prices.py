@@ -152,22 +152,38 @@ def query_one(page, destination: str, flight_date: date, direction: str):
 
 
 def check_connection():
+    # All 5 matrix jobs hit Supabase at the same instant on startup -- seen
+    # a transient 504 Gateway Timeout from this alone (real production
+    # failure, not hypothetical). A couple of retries absorbs that.
     url = f"{SUPABASE_URL}/rest/v1/one_way_prices?select=id&limit=1"
     headers = {
         "apikey": SERVICE_ROLE_KEY,
         "Authorization": f"Bearer {SERVICE_ROLE_KEY}",
         "Accept-Profile": SUPABASE_SCHEMA,
     }
-    resp = requests.get(url, headers=headers, timeout=30)
-    if resp.status_code >= 300:
-        raise RuntimeError(f"Supabase connection check failed ({resp.status_code}): {resp.text}")
-    print("Supabase connection check ok.")
+    last_error = None
+    for attempt in range(3):
+        if attempt > 0:
+            time.sleep(5 * attempt + random.uniform(0, 3))
+        try:
+            resp = requests.get(url, headers=headers, timeout=30)
+            if resp.status_code < 300:
+                print("Supabase connection check ok.")
+                return
+            last_error = RuntimeError(f"Supabase connection check failed ({resp.status_code}): {resp.text}")
+        except requests.RequestException as e:
+            last_error = e
+    raise last_error
 
 
 def upsert_rows(rows):
     if not rows:
         return
-    url = f"{SUPABASE_URL}/rest/v1/one_way_prices"
+    # merge-duplicates without an explicit on_conflict target defaults to the
+    # primary key (id), which is always new per row -- so it silently fails
+    # to match our real unique constraint and 409s on any re-run for a day
+    # that already has partial data (confirmed: this crashed a real run).
+    url = f"{SUPABASE_URL}/rest/v1/one_way_prices?on_conflict=sample_date,destination,flight_date,direction"
     headers = {
         "apikey": SERVICE_ROLE_KEY,
         "Authorization": f"Bearer {SERVICE_ROLE_KEY}",
