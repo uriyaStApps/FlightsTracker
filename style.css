@@ -70,8 +70,33 @@ h1 {
 
 .subtitle {
   color: var(--text-secondary);
-  margin: 0 0 24px;
+  margin: 0;
   font-size: 0.95rem;
+}
+
+.brand-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.brand-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  .brand-header {
+    align-items: flex-start;
+  }
+  .brand-logo {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 .card {
