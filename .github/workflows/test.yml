@@ -1,0 +1,28 @@
+name: Dashboard smoke tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "script.js"
+      - "style.css"
+      - "tests/**"
+      - ".github/workflows/test.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install playwright
+
+      - run: python -m playwright install --with-deps chromium
+
+      - run: python -u tests/test_dashboard.py
