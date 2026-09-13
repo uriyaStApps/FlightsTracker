@@ -189,21 +189,47 @@ def main():
         return
 
     flight_dates = build_flight_dates()
+    random.shuffle(flight_dates)  # spread any mid-run degradation across both directions, not just the second half
     print(f"Today: {today}. Destination: {destination} ({DESTINATIONS[destination]}). "
           f"Querying {len(flight_dates)} one-way (date, direction) pairs via Kayak.")
+
+    # Kayak silently degrades to empty results after enough requests in one
+    # browser session/cookie jar -- confirmed empirically (a fresh browser
+    # succeeded on a query that failed near the end of a long sustained
+    # session). Recycling the browser periodically avoids this.
+    BROWSER_RECYCLE_EVERY = 25
 
     rows = []
     ok_count = 0
     no_data_count = 0
     airline_hit_counts = {}
+    consecutive_empty = 0
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(user_agent=USER_AGENT, viewport={"width": 1400, "height": 1200})
 
-        for flight_date, direction in flight_dates:
+        for i, (flight_date, direction) in enumerate(flight_dates):
+            if i > 0 and i % BROWSER_RECYCLE_EVERY == 0:
+                page.close()
+                browser.close()
+                browser = p.chromium.launch()
+                page = browser.new_page(user_agent=USER_AGENT, viewport={"width": 1400, "height": 1200})
+                print(f"  recycled browser session at query {i}")
+
             try:
                 best = query_one(page, destination, flight_date, direction)
+                if best:
+                    consecutive_empty = 0
+                else:
+                    consecutive_empty += 1
+                    if consecutive_empty >= 5:
+                        print(f"  {consecutive_empty} empty results in a row as of query {i} -- forcing a browser recycle")
+                        page.close()
+                        browser.close()
+                        browser = p.chromium.launch()
+                        page = browser.new_page(user_agent=USER_AGENT, viewport={"width": 1400, "height": 1200})
+                        consecutive_empty = 0
                 for airline in best:
                     airline_hit_counts[airline] = airline_hit_counts.get(airline, 0) + 1
                 rows.append(
