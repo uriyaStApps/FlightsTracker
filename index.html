@@ -9,11 +9,11 @@
 <body>
   <div class="wrap">
     <h1>TLV &harr; OSL Price Tracker</h1>
-    <p class="subtitle">Daily SAS &amp; Lufthansa fares for May-June 2027, sampled once a day to find the best time to book (a proxy model for a May/June 2028 trip).</p>
+    <p class="subtitle">Daily one-way fares for SAS, Lufthansa, LOT &amp; Austrian, May-June 2027 &mdash; single-carrier itineraries only, tracked to find the best time to book (a proxy model for a May/June 2028 trip).</p>
 
     <div class="card">
-      <h2>Cheapest fare by departure date</h2>
-      <p class="hint">Latest snapshot. Color = cheaper fare found so far for that day. Pick a trip length below.</p>
+      <h2>Cheapest round trip by departure date</h2>
+      <p class="hint">Latest snapshot. Color = cheaper round-trip total for that airline &amp; day. Pick a trip length below.</p>
       <div class="controls">
         <label>Trip length
           <select id="durationSelect"></select>
@@ -28,8 +28,7 @@
     </div>
 
     <div class="card">
-      <h2>Price over time for one trip</h2>
-      <p class="hint">How the fare for this specific departure/return pair has moved since we started sampling.</p>
+      <h2>Pick a trip</h2>
       <div class="controls">
         <label>Departure date
           <select id="departureSelect"></select>
@@ -38,23 +37,23 @@
           <select id="durationSelect2"></select>
         </label>
       </div>
-      <div class="legend">
-        <span><span class="swatch" style="background:var(--series-lufthansa)"></span>Lufthansa</span>
-        <span><span class="swatch" style="background:var(--series-sas)"></span>SAS</span>
-      </div>
+
+      <h3>Cheapest right now</h3>
+      <div id="totalsNow" class="totals-list"></div>
+
+      <h3>Price over time</h3>
+      <div class="legend" id="tripLegend"></div>
       <div class="chart-shell">
         <svg id="lineChart"></svg>
         <div class="tooltip" id="lineTooltip"></div>
       </div>
       <p class="status-line" id="lineStatus"></p>
 
-      <h2 style="margin-top:24px">Sampled prices (table)</h2>
-      <p class="hint">Every daily sample for this trip since tracking started, most recent first.</p>
+      <h3>Sampled prices (table)</h3>
+      <p class="hint">Every daily sample for this trip since tracking started, most recent first. Round-trip total per airline.</p>
       <div class="table-shell">
         <table class="history-table">
-          <thead>
-            <tr><th>Date checked</th><th>Lufthansa</th><th>SAS</th></tr>
-          </thead>
+          <thead id="historyTableHead"></thead>
           <tbody id="historyTableBody"></tbody>
         </table>
       </div>

@@ -10,6 +10,8 @@
   --border: rgba(11, 11, 11, 0.1);
   --series-lufthansa: #2a78d6;
   --series-sas: #eb6834;
+  --series-lot: #1baf7a;
+  --series-austrian: #eda100;
   --seq-100: #cde2fb;
   --seq-250: #86b6ef;
   --seq-400: #3987e5;
@@ -30,6 +32,8 @@
     --border: rgba(255, 255, 255, 0.1);
     --series-lufthansa: #3987e5;
     --series-sas: #d95926;
+    --series-lot: #199e70;
+    --series-austrian: #c98500;
     --seq-100: #184f95;
     --seq-250: #1c5cab;
     --seq-400: #2a78d6;
@@ -210,4 +214,43 @@ svg {
   padding: 6px 10px;
   border-bottom: 1px solid var(--gridline);
   font-variant-numeric: tabular-nums;
+}
+
+.card h3 {
+  font-size: 0.9rem;
+  margin: 24px 0 8px;
+  color: var(--text-primary);
+}
+
+.totals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.totals-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--page);
+  border: 1px solid var(--border);
+}
+
+.totals-row-best {
+  border-color: var(--series-lufthansa);
+}
+
+.totals-airline {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.totals-price {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
 }
