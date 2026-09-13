@@ -1,7 +1,7 @@
 const SUPABASE_URL = "https://pualpwrkztjzhgpaqudm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_TFMMqLxLWHatd3lXYrUlTQ_aO7MvaQ9";
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   db: { schema: "tlv_osl_prices" },
 });
 
@@ -60,7 +60,7 @@ function svgns(tag) {
 let latestDayRows = []; // rows for the most recent sample_date, all durations
 
 async function loadLatestSnapshot() {
-  const { data: latestRows, error: latestErr } = await supabase
+  const { data: latestRows, error: latestErr } = await sb
     .from("price_samples")
     .select("sample_date")
     .order("sample_date", { ascending: false })
@@ -73,7 +73,7 @@ async function loadLatestSnapshot() {
   }
 
   const latestDate = latestRows[0].sample_date;
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from("price_samples")
     .select("departure_date,return_date,query_status,lufthansa_price,sas_price")
     .eq("sample_date", latestDate);
@@ -182,7 +182,7 @@ async function renderTripHistory(departureDate, nights) {
   const statusEl = document.getElementById("lineStatus");
   statusEl.textContent = "Loading...";
 
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from("price_samples")
     .select("sample_date,query_status,lufthansa_price,sas_price")
     .eq("departure_date", departureDate)
