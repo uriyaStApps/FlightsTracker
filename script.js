@@ -60,6 +60,19 @@ function allDepartureDates(destinationCode) {
   }
   return dates;
 }
+
+function allReturnDates(destinationCode) {
+  const info = destInfo(destinationCode);
+  const start = addDays(new Date(info.outboundStart + "T00:00:00Z"), Math.min(...DURATIONS));
+  const end = addDays(new Date(info.outboundEnd + "T00:00:00Z"), Math.max(...DURATIONS));
+  const dates = [];
+  let d = start;
+  while (d <= end) {
+    dates.push(toISO(d));
+    d = addDays(d, 1);
+  }
+  return dates;
+}
 function getVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
@@ -149,13 +162,12 @@ function renderHeatmapLegend() {
   `;
 }
 
-function renderHeatmap(nights) {
-  const dates = allDepartureDates(currentDestination);
+function renderOneWayHeatmap(svgId, dates, dataByDate, directionLabel) {
   const cellW = 900 / dates.length;
   const cellH = 30;
   const rowGap = 4;
   const labelW = 90;
-  const svg = document.getElementById("heatmap");
+  const svg = document.getElementById(svgId);
 
   if (!currentAirlines.length) {
     svg.setAttribute("viewBox", `0 0 900 60`);
@@ -174,10 +186,10 @@ function renderHeatmap(nights) {
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.innerHTML = "";
 
-  const totalsByAirlineDate = currentAirlines.map((a) =>
-    dates.map((dep) => totalFor(dep, toISO(addDays(new Date(dep), nights)), a.name))
+  const pricesByAirlineDate = currentAirlines.map((a) =>
+    dates.map((d) => (dataByDate[d] ? dataByDate[d][a.name] : null) ?? null)
   );
-  const allVals = totalsByAirlineDate.flat().filter((v) => v != null);
+  const allVals = pricesByAirlineDate.flat().filter((v) => v != null);
   const min = allVals.length ? Math.min(...allVals) : 0;
   const max = allVals.length ? Math.max(...allVals) : 1;
 
@@ -191,8 +203,8 @@ function renderHeatmap(nights) {
     label.textContent = a.name;
     svg.appendChild(label);
 
-    dates.forEach((dep, cIdx) => {
-      const price = totalsByAirlineDate[rIdx][cIdx];
+    dates.forEach((d, cIdx) => {
+      const price = pricesByAirlineDate[rIdx][cIdx];
       const x = labelW + cIdx * cellW;
       const y = rowGap * (rIdx + 1) + cellH * rIdx;
 
@@ -208,7 +220,7 @@ function renderHeatmap(nights) {
         tooltip.style.display = "block";
         tooltip.style.left = e.pageX + 12 + "px";
         tooltip.style.top = e.pageY + 12 + "px";
-        tooltip.textContent = price != null ? `${a.name} - ${dep}: $${price} round trip` : `${a.name} - ${dep}: no price that day`;
+        tooltip.textContent = price != null ? `${a.name} - ${directionLabel} ${d}: $${price}` : `${a.name} - ${directionLabel} ${d}: no price that day`;
       });
       rect.addEventListener("mouseleave", () => {
         tooltip.style.display = "none";
@@ -424,15 +436,12 @@ function drawLineChart(points) {
 // ---------- Wiring ----------
 
 function populateStaticSelects() {
-  const durationSelect = document.getElementById("durationSelect");
   const durationSelect2 = document.getElementById("durationSelect2");
   DURATIONS.forEach((n) => {
-    [durationSelect, durationSelect2].forEach((sel) => {
-      const opt = document.createElement("option");
-      opt.value = n;
-      opt.textContent = `${n} nights`;
-      sel.appendChild(opt);
-    });
+    const opt = document.createElement("option");
+    opt.value = n;
+    opt.textContent = `${n} nights`;
+    durationSelect2.appendChild(opt);
   });
 
   const destSelect = document.getElementById("destinationSelect");
@@ -476,12 +485,17 @@ async function refreshTripDetail() {
   await renderHistory(currentDestination, dep, ret);
 }
 
+function renderHeatmaps() {
+  renderOneWayHeatmap("heatmapOutbound", allDepartureDates(currentDestination), outboundLatest, "outbound");
+  renderOneWayHeatmap("heatmapReturn", allReturnDates(currentDestination), returnLatest, "return");
+}
+
 async function loadDestination(destination) {
   currentDestination = destination;
   populateDepartureSelect(destination);
   await loadLatestSnapshot(destination);
   renderDynamicLegends();
-  renderHeatmap(Number(document.getElementById("durationSelect").value));
+  renderHeatmaps();
   await refreshTripDetail();
 }
 
@@ -490,7 +504,6 @@ async function init() {
   renderHeatmapLegend();
 
   document.getElementById("destinationSelect").addEventListener("change", (e) => loadDestination(e.target.value));
-  document.getElementById("durationSelect").addEventListener("change", (e) => renderHeatmap(Number(e.target.value)));
   document.getElementById("departureSelect").addEventListener("change", refreshTripDetail);
   document.getElementById("durationSelect2").addEventListener("change", refreshTripDetail);
 

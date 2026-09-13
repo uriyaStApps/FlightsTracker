@@ -26,17 +26,19 @@
     </div>
 
     <div class="card">
-      <h2>Cheapest round trip by departure date</h2>
-      <p class="hint">Latest snapshot. Color = cheaper round-trip total for that airline &amp; day. Pick a trip length below.</p>
-      <div class="controls">
-        <label>Trip length
-          <select id="durationSelect"></select>
-        </label>
-      </div>
+      <h2>Cheapest fare by date, each direction</h2>
+      <p class="hint">Latest snapshot. Each direction is checked and shown independently &mdash; outbound and return don't need to both be priced for a day to show up here.</p>
       <div class="legend" id="heatmapLegend"></div>
+
+      <h3>Outbound (Tel Aviv &rarr; destination)</h3>
       <div class="chart-shell">
-        <svg id="heatmap"></svg>
+        <svg id="heatmapOutbound"></svg>
         <div class="tooltip" id="heatmapTooltip"></div>
+      </div>
+
+      <h3>Return (destination &rarr; Tel Aviv)</h3>
+      <div class="chart-shell">
+        <svg id="heatmapReturn"></svg>
       </div>
       <p class="status-line" id="heatmapStatus"></p>
     </div>
