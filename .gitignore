@@ -1,2 +1,4 @@
 __pycache__/
 *.pyc
+scratch_*.py
+debug_screenshot.png
