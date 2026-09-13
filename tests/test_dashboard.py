@@ -71,17 +71,37 @@ def main():
                 page.eval_on_selector_all("#heatmapOutbound rect", "els => els.length") > 0,
             )
 
-            # Hover a heatmap cell and confirm the tooltip actually shows text
+            # Hover a heatmap cell and confirm the tooltip both shows text AND
+            # actually lands near the cursor on screen -- catches the class of
+            # bug where the tooltip renders with content but at a position
+            # computed with the wrong coordinate system (e.g. page-relative
+            # coordinates used inside a `position: relative` ancestor), which
+            # a text-only check would miss entirely. Hit this for real: a
+            # `position: absolute` tooltip inside a `position: relative`
+            # `.chart-shell` combined with page-relative `e.pageX/pageY`
+            # placed the tooltip far from the cursor, effectively invisible.
             console_errors.clear()
             rects = page.locator("#heatmapOutbound rect")
             if rects.count() > 0:
-                box = rects.nth(min(20, rects.count() - 1)).bounding_box()
-                page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                idx = min(20, rects.count() - 1)
+                box = rects.nth(idx).bounding_box()
+                cursor_x, cursor_y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+                page.mouse.move(cursor_x, cursor_y)
                 page.wait_for_timeout(300)
                 tooltip_text = page.eval_on_selector("#heatmapTooltip", "el => el.textContent")
                 check("hovering a heatmap cell shows tooltip text", bool(tooltip_text and tooltip_text.strip()))
+
+                tbox = page.eval_on_selector(
+                    "#heatmapTooltip",
+                    "el => { const r = el.getBoundingClientRect(); return {x: r.x, y: r.y, w: r.width, h: r.height}; }",
+                )
+                viewport = page.viewport_size
+                near_cursor = abs(tbox["x"] - cursor_x) < 200 and abs(tbox["y"] - cursor_y) < 200
+                on_screen = 0 <= tbox["x"] <= viewport["width"] and 0 <= tbox["y"] <= viewport["height"]
+                check(f"tooltip renders on-screen near the cursor (tooltip at {tbox}, cursor at {cursor_x:.0f},{cursor_y:.0f})", near_cursor and on_screen)
             else:
                 check("hovering a heatmap cell shows tooltip text", False)
+                check("tooltip renders on-screen near the cursor", False)
 
             # Switching destination should not throw and should repopulate controls
             for code in DESTINATIONS:

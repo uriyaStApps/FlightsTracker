@@ -218,8 +218,8 @@ function renderOneWayHeatmap(svgId, dates, dataByDate, directionLabel) {
 
       rect.addEventListener("mousemove", (e) => {
         tooltip.style.display = "block";
-        tooltip.style.left = e.pageX + 12 + "px";
-        tooltip.style.top = e.pageY + 12 + "px";
+        tooltip.style.left = e.clientX + 12 + "px";
+        tooltip.style.top = e.clientY + 12 + "px";
         tooltip.textContent = price != null ? `${a.name} - ${directionLabel} ${d}: $${price}` : `${a.name} - ${directionLabel} ${d}: no price that day`;
       });
       rect.addEventListener("mouseleave", () => {
@@ -423,8 +423,8 @@ function drawLineChart(points) {
     const p = points[Math.max(0, Math.min(points.length - 1, i))];
     if (!p) return;
     tooltip.style.display = "block";
-    tooltip.style.left = e.pageX + 12 + "px";
-    tooltip.style.top = e.pageY + 12 + "px";
+    tooltip.style.left = e.clientX + 12 + "px";
+    tooltip.style.top = e.clientY + 12 + "px";
     tooltip.innerHTML =
       `${p.sample_date}<br>` + currentAirlines.map((a) => `${a.name}: ${p[a.name] != null ? "$" + p[a.name] : "-"}`).join("<br>");
   });
