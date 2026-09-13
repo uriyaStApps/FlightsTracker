@@ -5,18 +5,23 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   db: { schema: "flight_tracker" },
 });
 
-const TRIP_YEAR = 2027;
-const OUTBOUND_START = new Date(Date.UTC(TRIP_YEAR, 4, 1)); // May 1
-const OUTBOUND_END = new Date(Date.UTC(TRIP_YEAR, 5, 30)); // June 30
 const DURATIONS = [10, 11, 12, 13, 14];
 
+// Each destination owns its own trip window -- must mirror
+// scraper/fetch_prices.py's DESTINATIONS dict. Add a new destination here
+// (with whatever month fits it) and it works immediately, independent of
+// every other destination's dates.
 const DESTINATIONS = [
-  { code: "OSL", label: "Norway (Oslo)" },
-  { code: "YYC", label: "Western Canada (Calgary)" },
-  { code: "YVR", label: "Western Canada (Vancouver)" },
-  { code: "ANC", label: "Alaska (Anchorage)" },
-  { code: "ORD", label: "Chicago" },
+  { code: "OSL", label: "Norway (Oslo)", outboundStart: "2027-05-01", outboundEnd: "2027-06-30" },
+  { code: "YYC", label: "Western Canada (Calgary)", outboundStart: "2027-05-01", outboundEnd: "2027-06-30" },
+  { code: "YVR", label: "Western Canada (Vancouver)", outboundStart: "2027-05-01", outboundEnd: "2027-06-30" },
+  { code: "ANC", label: "Alaska (Anchorage)", outboundStart: "2027-05-01", outboundEnd: "2027-06-30" },
+  { code: "ORD", label: "Chicago", outboundStart: "2027-05-01", outboundEnd: "2027-06-30" },
 ];
+
+function destInfo(code) {
+  return DESTINATIONS.find((d) => d.code === code);
+}
 
 // Fixed categorical hue order -- assigned to airlines in the order they're
 // first seen for the selected destination, so identity stays stable while a
@@ -43,10 +48,13 @@ function addDays(d, n) {
   r.setUTCDate(r.getUTCDate() + n);
   return r;
 }
-function allDepartureDates() {
+function allDepartureDates(destinationCode) {
+  const info = destInfo(destinationCode);
+  const start = new Date(info.outboundStart + "T00:00:00Z");
+  const end = new Date(info.outboundEnd + "T00:00:00Z");
   const dates = [];
-  let d = OUTBOUND_START;
-  while (d <= OUTBOUND_END) {
+  let d = start;
+  while (d <= end) {
     dates.push(toISO(d));
     d = addDays(d, 1);
   }
@@ -142,7 +150,7 @@ function renderHeatmapLegend() {
 }
 
 function renderHeatmap(nights) {
-  const dates = allDepartureDates();
+  const dates = allDepartureDates(currentDestination);
   const cellW = 900 / dates.length;
   const cellH = 30;
   const rowGap = 4;
@@ -427,20 +435,25 @@ function populateStaticSelects() {
     });
   });
 
-  const departureSelect = document.getElementById("departureSelect");
-  allDepartureDates().forEach((d) => {
-    const opt = document.createElement("option");
-    opt.value = d;
-    opt.textContent = d;
-    departureSelect.appendChild(opt);
-  });
-
   const destSelect = document.getElementById("destinationSelect");
   DESTINATIONS.forEach((d) => {
     const opt = document.createElement("option");
     opt.value = d.code;
     opt.textContent = d.label;
     destSelect.appendChild(opt);
+  });
+
+  populateDepartureSelect(currentDestination);
+}
+
+function populateDepartureSelect(destinationCode) {
+  const departureSelect = document.getElementById("departureSelect");
+  departureSelect.innerHTML = "";
+  allDepartureDates(destinationCode).forEach((d) => {
+    const opt = document.createElement("option");
+    opt.value = d;
+    opt.textContent = d;
+    departureSelect.appendChild(opt);
   });
 }
 
@@ -465,6 +478,7 @@ async function refreshTripDetail() {
 
 async function loadDestination(destination) {
   currentDestination = destination;
+  populateDepartureSelect(destination);
   await loadLatestSnapshot(destination);
   renderDynamicLegends();
   renderHeatmap(Number(document.getElementById("durationSelect").value));

@@ -31,23 +31,28 @@ import requests
 from playwright.sync_api import sync_playwright
 
 ORIGIN = "TLV"
-TRIP_YEAR = 2027
 DURATIONS_NIGHTS = [10, 11, 12, 13, 14]
 
-# Project is defined to end here regardless of the workflow's own schedule.
-PROJECT_END = date(2027, 5, 1)
-
-# Every destination shares the same May-June 2027 outbound window and
-# 10-14 night duration range (the underlying goal is the same for all of
-# them: learn price behavior from ticket-opening until high season). Add a
-# new destination here -- no other code changes needed.
+# Each destination owns its own trip window -- add a new one at any time with
+# whatever month makes sense for it, and tracking starts from that moment
+# (today) forward, independent of every other destination. Tracking for a
+# destination stops once its own trip_start arrives (see project_end() below)
+# -- the point is learning the lead-up behavior, not the travel month itself.
+#
+# outbound_start / outbound_end: the range of possible outbound flight dates
+# (the target travel month, or a range spanning it).
 DESTINATIONS = {
-    "OSL": "Oslo",
-    "YYC": "Calgary",
-    "YVR": "Vancouver",
-    "ANC": "Anchorage",
-    "ORD": "Chicago",
+    "OSL": {"name": "Oslo (Norway)", "outbound_start": date(2027, 5, 1), "outbound_end": date(2027, 6, 30)},
+    "YYC": {"name": "Calgary (Western Canada)", "outbound_start": date(2027, 5, 1), "outbound_end": date(2027, 6, 30)},
+    "YVR": {"name": "Vancouver (Western Canada)", "outbound_start": date(2027, 5, 1), "outbound_end": date(2027, 6, 30)},
+    "ANC": {"name": "Anchorage (Alaska)", "outbound_start": date(2027, 5, 1), "outbound_end": date(2027, 6, 30)},
+    "ORD": {"name": "Chicago", "outbound_start": date(2027, 5, 1), "outbound_end": date(2027, 6, 30)},
 }
+
+
+def project_end(destination: str) -> date:
+    """Tracking for a destination stops once its own trip window begins."""
+    return DESTINATIONS[destination]["outbound_start"]
 
 # Airlines seen across these routes, needed so a card mentioning two of these
 # names is correctly recognized as a mixed/interline itinerary and excluded,
@@ -74,9 +79,9 @@ MIN_SLEEP_SECONDS = 1.5
 MAX_SLEEP_SECONDS = 3.0
 
 
-def build_flight_dates():
-    outbound_start = date(TRIP_YEAR, 5, 1)
-    outbound_end = date(TRIP_YEAR, 6, 30)
+def build_flight_dates(destination: str):
+    outbound_start = DESTINATIONS[destination]["outbound_start"]
+    outbound_end = DESTINATIONS[destination]["outbound_end"]
     return_start = outbound_start + timedelta(days=min(DURATIONS_NIGHTS))
     return_end = outbound_end + timedelta(days=max(DURATIONS_NIGHTS))
 
@@ -187,20 +192,20 @@ def main():
 
     check_connection()
 
+    end = project_end(destination)
     today = date.today()
-    if today > PROJECT_END:
-        print(f"Today ({today}) is past the project end date ({PROJECT_END}). Nothing to do.")
+    if today > end:
+        print(f"Today ({today}) is past {destination}'s project end date ({end}). Nothing to do.")
         return
 
-    flight_dates = build_flight_dates()
-    random.shuffle(flight_dates)  # spread any mid-run degradation across both directions, not just the second half
-    print(f"Today: {today}. Destination: {destination} ({DESTINATIONS[destination]}). "
+    flight_dates = build_flight_dates(destination)
+    random.shuffle(flight_dates)  # spread any transient slowness across both directions, not just the second half
+    print(f"Today: {today}. Destination: {destination} ({DESTINATIONS[destination]['name']}). "
           f"Querying {len(flight_dates)} one-way (date, direction) pairs via Kayak.")
 
-    # Kayak silently degrades to empty results after enough requests in one
-    # browser session/cookie jar -- confirmed empirically (a fresh browser
-    # succeeded on a query that failed near the end of a long sustained
-    # session). Recycling the browser periodically avoids this.
+    # Cheap insurance, kept even though the real fix for the "RETURN queries
+    # all came back empty" bug turned out to be the networkidle wait (see
+    # query_one) -- recycling the browser periodically costs almost nothing.
     BROWSER_RECYCLE_EVERY = 25
 
     rows = []
