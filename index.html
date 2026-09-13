@@ -3,13 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TLV-OSL Price Tracker</title>
+<title>Flight Tracker</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="wrap">
-    <h1>TLV &harr; OSL Price Tracker</h1>
-    <p class="subtitle">Daily one-way fares for SAS, Lufthansa, LOT &amp; Austrian, May-June 2027 &mdash; single-carrier itineraries only, tracked to find the best time to book (a proxy model for a May/June 2028 trip).</p>
+    <h1>Flight Tracker</h1>
+    <p class="subtitle">Daily one-way fares from Tel Aviv, tracked from ticket-opening until high season (May-June 2027) &mdash; single-carrier itineraries only, to find the best time to book (a proxy model for 2028 trips).</p>
+
+    <div class="card">
+      <div class="controls">
+        <label>Destination
+          <select id="destinationSelect"></select>
+        </label>
+      </div>
+    </div>
 
     <div class="card">
       <h2>Cheapest round trip by departure date</h2>

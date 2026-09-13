@@ -2,7 +2,7 @@ const SUPABASE_URL = "https://pualpwrkztjzhgpaqudm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_TFMMqLxLWHatd3lXYrUlTQ_aO7MvaQ9";
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  db: { schema: "tlv_osl_prices" },
+  db: { schema: "flight_tracker" },
 });
 
 const TRIP_YEAR = 2027;
@@ -10,12 +10,30 @@ const OUTBOUND_START = new Date(Date.UTC(TRIP_YEAR, 4, 1)); // May 1
 const OUTBOUND_END = new Date(Date.UTC(TRIP_YEAR, 5, 30)); // June 30
 const DURATIONS = [10, 11, 12, 13, 14];
 
-const AIRLINES = [
-  { key: "sas_price", label: "SAS", series: "--series-sas" },
-  { key: "lufthansa_price", label: "Lufthansa", series: "--series-lufthansa" },
-  { key: "lot_price", label: "LOT", series: "--series-lot" },
-  { key: "austrian_price", label: "Austrian", series: "--series-austrian" },
+const DESTINATIONS = [
+  { code: "OSL", label: "Norway (Oslo)" },
+  { code: "YYC", label: "Western Canada (Calgary)" },
+  { code: "YVR", label: "Western Canada (Vancouver)" },
+  { code: "ANC", label: "Alaska (Anchorage)" },
+  { code: "ORD", label: "Chicago" },
 ];
+
+// Fixed categorical hue order -- assigned to airlines in the order they're
+// first seen for the selected destination, so identity stays stable while a
+// destination is open but isn't hardcoded per-airline (different
+// destinations have different real carriers).
+const SERIES_COLORS = ["--series-1", "--series-2", "--series-3", "--series-4", "--series-5", "--series-6"];
+
+// Airlines chosen to feature per destination (real single-carrier itineraries
+// confirmed via research/testing -- see project notes). Shown first, in this
+// order, ahead of any other single-carrier airline the scraper happens to
+// find. Destinations not listed here fall back to whatever's discovered.
+const FEATURED_AIRLINES = {
+  OSL: ["Scandinavian Airlines", "Lufthansa", "LOT", "Austrian Airlines"],
+};
+
+let currentDestination = DESTINATIONS[0].code;
+let currentAirlines = []; // [{name, series}] discovered for currentDestination
 
 function toISO(d) {
   return d.toISOString().slice(0, 10);
@@ -55,26 +73,31 @@ function priceToColor(price, min, max) {
 // ---------- Latest snapshot (for overview + "totals now") ----------
 
 let latestSampleDate = null;
-let outboundLatest = {}; // flight_date -> row
-let returnLatest = {}; // flight_date -> row
+let outboundLatest = {}; // flight_date -> prices jsonb
+let returnLatest = {}; // flight_date -> prices jsonb
 
-async function loadLatestSnapshot() {
+async function loadLatestSnapshot(destination) {
   const { data: latestRows, error: latestErr } = await sb
     .from("one_way_prices")
     .select("sample_date")
+    .eq("destination", destination)
     .order("sample_date", { ascending: false })
     .limit(1);
 
   if (latestErr || !latestRows || !latestRows.length) {
     document.getElementById("heatmapStatus").textContent =
-      "No data yet -- the first daily fetch hasn't run, or hasn't been recorded yet.";
+      "No data yet for this destination -- the daily fetch hasn't run, or hasn't been recorded yet.";
+    outboundLatest = {};
+    returnLatest = {};
+    currentAirlines = [];
     return;
   }
   latestSampleDate = latestRows[0].sample_date;
 
   const { data, error } = await sb
     .from("one_way_prices")
-    .select("flight_date,direction,sas_price,lufthansa_price,lot_price,austrian_price")
+    .select("flight_date,direction,prices")
+    .eq("destination", destination)
     .eq("sample_date", latestSampleDate);
 
   if (error) {
@@ -84,17 +107,27 @@ async function loadLatestSnapshot() {
 
   outboundLatest = {};
   returnLatest = {};
+  const seenAirlines = [];
   for (const row of data) {
-    (row.direction === "TLV_OSL" ? outboundLatest : returnLatest)[row.flight_date] = row;
+    const target = row.direction === "OUTBOUND" ? outboundLatest : returnLatest;
+    target[row.flight_date] = row.prices || {};
+    for (const name of Object.keys(row.prices || {})) {
+      if (!seenAirlines.includes(name)) seenAirlines.push(name);
+    }
   }
+  const featured = (FEATURED_AIRLINES[destination] || []).filter((name) => seenAirlines.includes(name));
+  const rest = seenAirlines.filter((name) => !featured.includes(name)).sort();
+  const ordered = [...featured, ...rest].slice(0, SERIES_COLORS.length);
+  currentAirlines = ordered.map((name, i) => ({ name, series: SERIES_COLORS[i] }));
+
   document.getElementById("heatmapStatus").textContent = `Snapshot from ${latestSampleDate} (${data.length} one-way checks that day).`;
 }
 
-function totalFor(depDate, retDate, airlineKey) {
+function totalFor(depDate, retDate, airlineName) {
   const out = outboundLatest[depDate];
   const ret = returnLatest[retDate];
-  if (!out || !ret || out[airlineKey] == null || ret[airlineKey] == null) return null;
-  return out[airlineKey] + ret[airlineKey];
+  if (!out || !ret || out[airlineName] == null || ret[airlineName] == null) return null;
+  return out[airlineName] + ret[airlineName];
 }
 
 // ---------- Heatmap overview ----------
@@ -113,16 +146,28 @@ function renderHeatmap(nights) {
   const cellW = 900 / dates.length;
   const cellH = 30;
   const rowGap = 4;
-  const labelW = 78;
-  const height = rowGap * (AIRLINES.length + 1) + cellH * AIRLINES.length;
-  const width = labelW + dates.length * cellW;
-
+  const labelW = 90;
   const svg = document.getElementById("heatmap");
+
+  if (!currentAirlines.length) {
+    svg.setAttribute("viewBox", `0 0 900 60`);
+    svg.innerHTML = "";
+    const t = svgns("text");
+    t.setAttribute("x", 10);
+    t.setAttribute("y", 30);
+    t.setAttribute("class", "axis-label");
+    t.textContent = "No airline data yet for this destination.";
+    svg.appendChild(t);
+    return;
+  }
+
+  const height = rowGap * (currentAirlines.length + 1) + cellH * currentAirlines.length;
+  const width = labelW + dates.length * cellW;
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.innerHTML = "";
 
-  const totalsByAirlineDate = AIRLINES.map((a) =>
-    dates.map((dep) => totalFor(dep, toISO(addDays(new Date(dep), nights)), a.key))
+  const totalsByAirlineDate = currentAirlines.map((a) =>
+    dates.map((dep) => totalFor(dep, toISO(addDays(new Date(dep), nights)), a.name))
   );
   const allVals = totalsByAirlineDate.flat().filter((v) => v != null);
   const min = allVals.length ? Math.min(...allVals) : 0;
@@ -130,12 +175,12 @@ function renderHeatmap(nights) {
 
   const tooltip = document.getElementById("heatmapTooltip");
 
-  AIRLINES.forEach((a, rIdx) => {
+  currentAirlines.forEach((a, rIdx) => {
     const label = svgns("text");
     label.setAttribute("x", 0);
     label.setAttribute("y", rowGap * (rIdx + 1) + cellH * rIdx + cellH / 2 + 4);
     label.setAttribute("class", "heatmap-row-label");
-    label.textContent = a.label;
+    label.textContent = a.name;
     svg.appendChild(label);
 
     dates.forEach((dep, cIdx) => {
@@ -155,7 +200,7 @@ function renderHeatmap(nights) {
         tooltip.style.display = "block";
         tooltip.style.left = e.pageX + 12 + "px";
         tooltip.style.top = e.pageY + 12 + "px";
-        tooltip.textContent = price != null ? `${a.label} - ${dep}: $${price} round trip` : `${a.label} - ${dep}: no price that day`;
+        tooltip.textContent = price != null ? `${a.name} - ${dep}: $${price} round trip` : `${a.name} - ${dep}: no price that day`;
       });
       rect.addEventListener("mouseleave", () => {
         tooltip.style.display = "none";
@@ -170,7 +215,8 @@ function renderHeatmap(nights) {
 
 function renderTotalsNow(depDate, retDate) {
   const el = document.getElementById("totalsNow");
-  const rows = AIRLINES.map((a) => ({ ...a, total: totalFor(depDate, retDate, a.key) }))
+  const rows = currentAirlines
+    .map((a) => ({ ...a, total: totalFor(depDate, retDate, a.name) }))
     .filter((r) => r.total != null)
     .sort((a, b) => a.total - b.total);
 
@@ -184,29 +230,31 @@ function renderTotalsNow(depDate, retDate) {
       (r, i) => `
       <div class="totals-row ${i === 0 ? "totals-row-best" : ""}">
         <span class="swatch" style="background:${getVar(r.series)}"></span>
-        <span class="totals-airline">${r.label}</span>
+        <span class="totals-airline">${r.name}</span>
         <span class="totals-price">$${r.total}</span>
       </div>`
     )
     .join("");
 }
 
-async function renderHistory(depDate, retDate) {
+async function renderHistory(destination, depDate, retDate) {
   const statusEl = document.getElementById("lineStatus");
   statusEl.textContent = "Loading...";
 
   const [outRes, retRes] = await Promise.all([
     sb
       .from("one_way_prices")
-      .select("sample_date,sas_price,lufthansa_price,lot_price,austrian_price")
+      .select("sample_date,prices")
+      .eq("destination", destination)
       .eq("flight_date", depDate)
-      .eq("direction", "TLV_OSL")
+      .eq("direction", "OUTBOUND")
       .order("sample_date", { ascending: true }),
     sb
       .from("one_way_prices")
-      .select("sample_date,sas_price,lufthansa_price,lot_price,austrian_price")
+      .select("sample_date,prices")
+      .eq("destination", destination)
       .eq("flight_date", retDate)
-      .eq("direction", "OSL_TLV")
+      .eq("direction", "RETURN")
       .order("sample_date", { ascending: true }),
   ]);
 
@@ -217,20 +265,20 @@ async function renderHistory(depDate, retDate) {
 
   const byDate = {};
   for (const row of outRes.data) {
-    byDate[row.sample_date] = { sample_date: row.sample_date, out: row };
+    byDate[row.sample_date] = { sample_date: row.sample_date, out: row.prices || {} };
   }
   for (const row of retRes.data) {
     byDate[row.sample_date] = byDate[row.sample_date] || { sample_date: row.sample_date };
-    byDate[row.sample_date].ret = row;
+    byDate[row.sample_date].ret = row.prices || {};
   }
 
   const points = Object.values(byDate).sort((a, b) => (a.sample_date < b.sample_date ? -1 : 1));
   const rows = points.map((p) => {
     const row = { sample_date: p.sample_date };
-    for (const a of AIRLINES) {
-      const o = p.out ? p.out[a.key] : null;
-      const r = p.ret ? p.ret[a.key] : null;
-      row[a.key] = o != null && r != null ? o + r : null;
+    for (const a of currentAirlines) {
+      const o = p.out ? p.out[a.name] : null;
+      const r = p.ret ? p.ret[a.name] : null;
+      row[a.name] = o != null && r != null ? o + r : null;
     }
     return row;
   });
@@ -252,7 +300,7 @@ function renderHistoryTable(rows) {
   const tbody = document.getElementById("historyTableBody");
   tbody.innerHTML = "";
   [...rows].reverse().forEach((row) => {
-    const cells = AIRLINES.map((a) => `<td>${row[a.key] != null ? "$" + row[a.key] : "-"}</td>`).join("");
+    const cells = currentAirlines.map((a) => `<td>${row[a.name] != null ? "$" + row[a.name] : "-"}</td>`).join("");
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${row.sample_date}</td>${cells}`;
     tbody.appendChild(tr);
@@ -270,7 +318,7 @@ function drawLineChart(points) {
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.innerHTML = "";
 
-  const allVals = points.flatMap((p) => AIRLINES.map((a) => p[a.key])).filter((v) => v != null);
+  const allVals = points.flatMap((p) => currentAirlines.map((a) => p[a.name])).filter((v) => v != null);
   if (!allVals.length) {
     const t = svgns("text");
     t.setAttribute("x", width / 2);
@@ -318,15 +366,15 @@ function drawLineChart(points) {
     svg.appendChild(label);
   });
 
-  AIRLINES.forEach((a) => {
+  currentAirlines.forEach((a) => {
     let d = "";
     let started = false;
     points.forEach((p, i) => {
-      if (p[a.key] == null) {
+      if (p[a.name] == null) {
         started = false;
         return;
       }
-      d += `${started ? "L" : "M"}${x(i)},${y(p[a.key])} `;
+      d += `${started ? "L" : "M"}${x(i)},${y(p[a.name])} `;
       started = true;
     });
     if (!d) return;
@@ -358,7 +406,7 @@ function drawLineChart(points) {
     tooltip.style.left = e.pageX + 12 + "px";
     tooltip.style.top = e.pageY + 12 + "px";
     tooltip.innerHTML =
-      `${p.sample_date}<br>` + AIRLINES.map((a) => `${a.label}: ${p[a.key] != null ? "$" + p[a.key] : "-"}`).join("<br>");
+      `${p.sample_date}<br>` + currentAirlines.map((a) => `${a.name}: ${p[a.name] != null ? "$" + p[a.name] : "-"}`).join("<br>");
   });
   hitArea.addEventListener("mouseleave", () => {
     tooltip.style.display = "none";
@@ -367,7 +415,7 @@ function drawLineChart(points) {
 
 // ---------- Wiring ----------
 
-function populateSelects() {
+function populateStaticSelects() {
   const durationSelect = document.getElementById("durationSelect");
   const durationSelect2 = document.getElementById("durationSelect2");
   DURATIONS.forEach((n) => {
@@ -387,35 +435,52 @@ function populateSelects() {
     departureSelect.appendChild(opt);
   });
 
+  const destSelect = document.getElementById("destinationSelect");
+  DESTINATIONS.forEach((d) => {
+    const opt = document.createElement("option");
+    opt.value = d.code;
+    opt.textContent = d.label;
+    destSelect.appendChild(opt);
+  });
+}
+
+function renderDynamicLegends() {
   const legendEl = document.getElementById("tripLegend");
-  legendEl.innerHTML = AIRLINES.map((a) => `<span><span class="swatch" style="background:${getVar(a.series)}"></span>${a.label}</span>`).join("");
+  legendEl.innerHTML = currentAirlines
+    .map((a) => `<span><span class="swatch" style="background:${getVar(a.series)}"></span>${a.name}</span>`)
+    .join("") || '<span class="empty-note">No airlines yet</span>';
 
   const tableHead = document.getElementById("historyTableHead");
-  tableHead.innerHTML = `<tr><th>Date checked</th>${AIRLINES.map((a) => `<th>${a.label}</th>`).join("")}</tr>`;
+  tableHead.innerHTML = `<tr><th>Date checked</th>${currentAirlines.map((a) => `<th>${a.name}</th>`).join("")}</tr>`;
+}
+
+async function refreshTripDetail() {
+  const departureSelect = document.getElementById("departureSelect");
+  const durationSelect2 = document.getElementById("durationSelect2");
+  const dep = departureSelect.value;
+  const ret = toISO(addDays(new Date(dep), Number(durationSelect2.value)));
+  renderTotalsNow(dep, ret);
+  await renderHistory(currentDestination, dep, ret);
+}
+
+async function loadDestination(destination) {
+  currentDestination = destination;
+  await loadLatestSnapshot(destination);
+  renderDynamicLegends();
+  renderHeatmap(Number(document.getElementById("durationSelect").value));
+  await refreshTripDetail();
 }
 
 async function init() {
-  populateSelects();
+  populateStaticSelects();
   renderHeatmapLegend();
 
-  await loadLatestSnapshot();
-  renderHeatmap(Number(document.getElementById("durationSelect").value));
+  document.getElementById("destinationSelect").addEventListener("change", (e) => loadDestination(e.target.value));
+  document.getElementById("durationSelect").addEventListener("change", (e) => renderHeatmap(Number(e.target.value)));
+  document.getElementById("departureSelect").addEventListener("change", refreshTripDetail);
+  document.getElementById("durationSelect2").addEventListener("change", refreshTripDetail);
 
-  document.getElementById("durationSelect").addEventListener("change", (e) => {
-    renderHeatmap(Number(e.target.value));
-  });
-
-  const departureSelect = document.getElementById("departureSelect");
-  const durationSelect2 = document.getElementById("durationSelect2");
-  const refresh = () => {
-    const dep = departureSelect.value;
-    const ret = toISO(addDays(new Date(dep), Number(durationSelect2.value)));
-    renderTotalsNow(dep, ret);
-    renderHistory(dep, ret);
-  };
-  departureSelect.addEventListener("change", refresh);
-  durationSelect2.addEventListener("change", refresh);
-  refresh();
+  await loadDestination(currentDestination);
 }
 
 init();

@@ -8,10 +8,12 @@
   --gridline: #e1e0d9;
   --baseline: #c3c2b7;
   --border: rgba(11, 11, 11, 0.1);
-  --series-lufthansa: #2a78d6;
-  --series-sas: #eb6834;
-  --series-lot: #1baf7a;
-  --series-austrian: #eda100;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #4a3aa7;
   --seq-100: #cde2fb;
   --seq-250: #86b6ef;
   --seq-400: #3987e5;
@@ -30,10 +32,12 @@
     --gridline: #2c2c2a;
     --baseline: #383835;
     --border: rgba(255, 255, 255, 0.1);
-    --series-lufthansa: #3987e5;
-    --series-sas: #d95926;
-    --series-lot: #199e70;
-    --series-austrian: #c98500;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #9085e9;
     --seq-100: #184f95;
     --seq-250: #1c5cab;
     --seq-400: #2a78d6;
@@ -240,7 +244,7 @@ svg {
 }
 
 .totals-row-best {
-  border-color: var(--series-lufthansa);
+  border-color: var(--series-1);
 }
 
 .totals-airline {

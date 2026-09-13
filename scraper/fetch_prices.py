@@ -1,10 +1,11 @@
 """
-Daily TLV<->OSL ONE-WAY price sampler for SAS, Lufthansa, LOT and Austrian, via Kayak.
+Daily ONE-WAY price sampler, TLV to a configured destination, via Kayak.
 
-Runs once a day (via GitHub Actions). For every single flight date in each
+Runs once a day per destination (via a GitHub Actions matrix -- see
+.github/workflows/daily_fetch.yml). For every single flight date in each
 direction, loads the Kayak one-way search results, loads as many result cards
-as it can (Kayak lazy-loads/paginates), and reads the cheapest price for each
-target airline directly off the itinerary cards -- but ONLY itineraries
+as it can (Kayak lazy-loads/paginates), and reads the cheapest price for
+every airline directly off the itinerary cards -- but ONLY itineraries
 operated by that one airline for every leg (no interline/codeshare mixes, and
 explicitly excluding "self-transfer" combos of two separate tickets).
 
@@ -13,10 +14,11 @@ departure/return pair be assembled after the fact from two independent daily
 numbers, and needs far fewer queries per day than a full round-trip matrix.
 
 Each day's snapshot is a one-shot, unrepeatable observation, so the full set
-of single-carrier prices Kayak showed that day is kept (not just our 4
-target airlines) in case it's useful later.
+of single-carrier prices Kayak showed that day is kept as jsonb (airline sets
+differ per destination, so this isn't a fixed set of columns).
 """
 
+import argparse
 import json
 import os
 import random
@@ -29,37 +31,41 @@ import requests
 from playwright.sync_api import sync_playwright
 
 ORIGIN = "TLV"
-DEST = "OSL"
-
 TRIP_YEAR = 2027
-OUTBOUND_START = date(TRIP_YEAR, 5, 1)
-OUTBOUND_END = date(TRIP_YEAR, 6, 30)
 DURATIONS_NIGHTS = [10, 11, 12, 13, 14]
-RETURN_START = OUTBOUND_START + timedelta(days=min(DURATIONS_NIGHTS))
-RETURN_END = OUTBOUND_END + timedelta(days=max(DURATIONS_NIGHTS))
 
 # Project is defined to end here regardless of the workflow's own schedule.
 PROJECT_END = date(2027, 5, 1)
 
-TARGET_AIRLINES = {
-    "SK": "Scandinavian Airlines",
-    "LH": "Lufthansa",
-    "LO": "LOT",
-    "OS": "Austrian Airlines",
+# Every destination shares the same May-June 2027 outbound window and
+# 10-14 night duration range (the underlying goal is the same for all of
+# them: learn price behavior from ticket-opening until high season). Add a
+# new destination here -- no other code changes needed.
+DESTINATIONS = {
+    "OSL": "Oslo",
+    "YYC": "Calgary",
+    "YVR": "Vancouver",
+    "ANC": "Anchorage",
+    "ORD": "Chicago",
 }
-# Other carriers that show up on this route, needed so a card mentioning two
-# of these names is correctly recognized as a mixed/interline itinerary and
-# excluded, rather than mis-read as a single-carrier fare.
-ALL_KNOWN_AIRLINES = list(TARGET_AIRLINES.values()) + [
+
+# Airlines seen across these routes, needed so a card mentioning two of these
+# names is correctly recognized as a mixed/interline itinerary and excluded,
+# rather than mis-read as a single-carrier fare. Not a per-destination
+# allowlist -- any single-carrier airline found is kept in raw form.
+ALL_KNOWN_AIRLINES = [
+    "Scandinavian Airlines", "Lufthansa", "LOT", "Austrian Airlines",
     "Air France", "KLM", "SWISS", "Brussels Airlines", "EL AL", "Iberia",
     "ITA Airways", "TAP AIR PORTUGAL", "TAROM", "Aegean Airlines", "airBaltic",
     "Norwegian", "Ryanair", "Wizz Air", "Emirates", "Etihad Airways",
     "Ethiopian Air", "flydubai", "Sky Express", "British Airways", "Delta",
-    "United", "American", "Virgin Atlantic", "JetBlue",
+    "United", "American Airlines", "Virgin Atlantic", "JetBlue", "Air Canada",
+    "Alaska Airlines", "Hawaiian Airlines", "Norse Atlantic Airways",
+    "Condor", "Finnair", "Icelandair", "Turkish Airlines", "Qatar Airways",
 ]
 
 SUPABASE_URL = "https://pualpwrkztjzhgpaqudm.supabase.co"
-SUPABASE_SCHEMA = "tlv_osl_prices"
+SUPABASE_SCHEMA = "flight_tracker"
 SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36"
@@ -69,14 +75,19 @@ MAX_SLEEP_SECONDS = 3.0
 
 
 def build_flight_dates():
+    outbound_start = date(TRIP_YEAR, 5, 1)
+    outbound_end = date(TRIP_YEAR, 6, 30)
+    return_start = outbound_start + timedelta(days=min(DURATIONS_NIGHTS))
+    return_end = outbound_end + timedelta(days=max(DURATIONS_NIGHTS))
+
     pairs = []
-    d = OUTBOUND_START
-    while d <= OUTBOUND_END:
-        pairs.append((d, "TLV_OSL"))
+    d = outbound_start
+    while d <= outbound_end:
+        pairs.append((d, "OUTBOUND"))
         d += timedelta(days=1)
-    d = RETURN_START
-    while d <= RETURN_END:
-        pairs.append((d, "OSL_TLV"))
+    d = return_start
+    while d <= return_end:
+        pairs.append((d, "RETURN"))
         d += timedelta(days=1)
     return pairs
 
@@ -98,8 +109,8 @@ def parse_card(text):
     return next(iter(airlines_in_card)), price
 
 
-def query_one(page, flight_date: date, direction: str):
-    origin, dest = (ORIGIN, DEST) if direction == "TLV_OSL" else (DEST, ORIGIN)
+def query_one(page, destination: str, flight_date: date, direction: str):
+    origin, dest = (ORIGIN, destination) if direction == "OUTBOUND" else (destination, ORIGIN)
     url = f"https://www.kayak.com/flights/{origin}-{dest}/{flight_date.isoformat()}"
     page.goto(url, timeout=60000)
     try:
@@ -161,6 +172,11 @@ def upsert_rows(rows):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--destination", required=True, choices=sorted(DESTINATIONS))
+    args = parser.parse_args()
+    destination = args.destination
+
     if not SERVICE_ROLE_KEY:
         print("SUPABASE_SERVICE_ROLE_KEY is not set", file=sys.stderr)
         sys.exit(1)
@@ -173,11 +189,13 @@ def main():
         return
 
     flight_dates = build_flight_dates()
-    print(f"Today: {today}. Querying {len(flight_dates)} one-way (date, direction) pairs via Kayak.")
+    print(f"Today: {today}. Destination: {destination} ({DESTINATIONS[destination]}). "
+          f"Querying {len(flight_dates)} one-way (date, direction) pairs via Kayak.")
 
     rows = []
     ok_count = 0
     no_data_count = 0
+    airline_hit_counts = {}
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -185,18 +203,17 @@ def main():
 
         for flight_date, direction in flight_dates:
             try:
-                best = query_one(page, flight_date, direction)
+                best = query_one(page, destination, flight_date, direction)
+                for airline in best:
+                    airline_hit_counts[airline] = airline_hit_counts.get(airline, 0) + 1
                 rows.append(
                     {
                         "sample_date": today.isoformat(),
+                        "destination": destination,
                         "flight_date": flight_date.isoformat(),
                         "direction": direction,
                         "query_status": "ok",
-                        "sas_price": best.get(TARGET_AIRLINES["SK"]),
-                        "lufthansa_price": best.get(TARGET_AIRLINES["LH"]),
-                        "lot_price": best.get(TARGET_AIRLINES["LO"]),
-                        "austrian_price": best.get(TARGET_AIRLINES["OS"]),
-                        "raw_snapshot": best or None,
+                        "prices": best or None,
                         "currency": "USD",
                     }
                 )
@@ -206,14 +223,11 @@ def main():
                 rows.append(
                     {
                         "sample_date": today.isoformat(),
+                        "destination": destination,
                         "flight_date": flight_date.isoformat(),
                         "direction": direction,
                         "query_status": "no_data",
-                        "sas_price": None,
-                        "lufthansa_price": None,
-                        "lot_price": None,
-                        "austrian_price": None,
-                        "raw_snapshot": None,
+                        "prices": None,
                         "currency": "USD",
                     }
                 )
@@ -223,12 +237,8 @@ def main():
 
         browser.close()
 
-    sas_n = sum(1 for r in rows if r["sas_price"] is not None)
-    lh_n = sum(1 for r in rows if r["lufthansa_price"] is not None)
-    lo_n = sum(1 for r in rows if r["lot_price"] is not None)
-    os_n = sum(1 for r in rows if r["austrian_price"] is not None)
-    print(f"Done: {ok_count} ok, {no_data_count} no_data.")
-    print(f"Priced -- SAS: {sas_n}, Lufthansa: {lh_n}, LOT: {lo_n}, Austrian: {os_n} (out of {len(rows)}).")
+    print(f"Done: {ok_count} ok, {no_data_count} no_data (out of {len(rows)}).")
+    print(f"Airlines seen (single-carrier hits across all queries): {airline_hit_counts}")
 
     CHUNK = 50
     for i in range(0, len(rows), CHUNK):
