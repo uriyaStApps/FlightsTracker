@@ -6,10 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       destination:
-        description: "Single destination to run (leave empty to run all)"
-        required: false
+        description: "Destination to run"
+        required: true
         type: choice
-        options: ["", "OSL", "YYC", "YVR", "ANC", "ORD"]
+        default: "ALL"
+        options: ["ALL", "OSL", "YYC", "YVR", "ANC", "ORD"]
 
 jobs:
   fetch:
@@ -30,7 +31,7 @@ jobs:
 
       - run: python -m playwright install --with-deps chromium
 
-      - if: ${{ github.event.inputs.destination == '' || github.event.inputs.destination == matrix.destination }}
+      - if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.destination == 'ALL' || github.event.inputs.destination == matrix.destination }}
         run: python scraper/fetch_prices.py --destination ${{ matrix.destination }}
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
