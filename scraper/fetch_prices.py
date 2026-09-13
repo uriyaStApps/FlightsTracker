@@ -113,18 +113,22 @@ def query_one(page, destination: str, flight_date: date, direction: str):
     origin, dest = (ORIGIN, destination) if direction == "OUTBOUND" else (destination, ORIGIN)
     url = f"https://www.kayak.com/flights/{origin}-{dest}/{flight_date.isoformat()}"
     page.goto(url, timeout=60000)
+    # Kayak's page never reaches true network-idle (continuous background
+    # polling/ads/tracking), so waiting on that blocks for its full timeout
+    # every time (confirmed empirically: ~40s/query instead of ~10-13s).
+    # Wait for a concrete signal -- the first result card -- instead.
     try:
-        page.wait_for_load_state("networkidle", timeout=25000)
+        page.wait_for_selector(".nrc6", timeout=15000)
     except Exception:
-        pass
-    page.wait_for_timeout(3500)
+        pass  # may genuinely be zero results; the card scan below just finds nothing
+    page.wait_for_timeout(1500)
 
     for _ in range(6):
         page.keyboard.press("End")
-        page.wait_for_timeout(600)
+        page.wait_for_timeout(500)
         try:
-            page.get_by_text(re.compile(r"Show more results")).click(timeout=1200, force=True)
-            page.wait_for_timeout(1000)
+            page.get_by_text(re.compile(r"Show more results")).click(timeout=1000, force=True)
+            page.wait_for_timeout(800)
         except Exception:
             pass
 

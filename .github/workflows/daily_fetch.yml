@@ -32,6 +32,7 @@ jobs:
       - run: python -m playwright install --with-deps chromium
 
       - if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.destination == 'ALL' || github.event.inputs.destination == matrix.destination }}
-        run: python scraper/fetch_prices.py --destination ${{ matrix.destination }}
+        run: python -u scraper/fetch_prices.py --destination ${{ matrix.destination }}
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PYTHONUNBUFFERED: "1"
