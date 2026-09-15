@@ -78,6 +78,14 @@ def main():
                 page.eval_on_selector_all("#returnDateSelect option", "els => els.length") > 0,
             )
             check(
+                "package departure dropdown is populated",
+                page.eval_on_selector_all("#packageDepartureSelect option", "els => els.length") > 0,
+            )
+            check(
+                "package duration dropdown is populated",
+                page.eval_on_selector_all("#packageDurationSelect option", "els => els.length") > 0,
+            )
+            check(
                 "outbound heatmap rendered at least one cell",
                 page.eval_on_selector_all("#heatmapOutbound rect", "els => els.length") > 0,
             )

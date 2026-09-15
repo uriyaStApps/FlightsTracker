@@ -151,6 +151,16 @@ function latestFor(direction) {
   return direction === "OUTBOUND" ? outboundLatest : returnLatest;
 }
 
+// Round-trip total = outbound price + return price, built purely from the
+// one-way data already loaded above (no extra checks) -- an addition on top
+// of the independent one-way views, not a replacement for them.
+function packageTotal(depDate, retDate, airlineName) {
+  const out = outboundLatest[depDate];
+  const ret = returnLatest[retDate];
+  if (!out || !ret || out[airlineName] == null || ret[airlineName] == null) return null;
+  return out[airlineName] + ret[airlineName];
+}
+
 // ---------- Quick stats (cheapest ever seen, full history) ----------
 
 async function renderQuickStats(destination) {
@@ -473,6 +483,108 @@ function drawLineChart(points, ids) {
   });
 }
 
+// ---------- Trip packages (outbound + return combined, additive on top of the one-way views) ----------
+
+const PACKAGE_IDS = {
+  totals: "packageTotals",
+  legend: "packageLegend",
+  status: "packageStatus",
+  chart: "packageChart",
+  tooltip: "packageTooltip",
+  tableHead: "packageTableHead",
+  tableBody: "packageTableBody",
+};
+
+function renderPackageTotals(depDate, retDate) {
+  const el = document.getElementById(PACKAGE_IDS.totals);
+  const all = currentAirlines.map((a) => ({ ...a, total: packageTotal(depDate, retDate, a.name) }));
+  const rows = all.filter((r) => r.total != null).sort((a, b) => a.total - b.total);
+  const missing = all.filter((r) => r.total == null);
+
+  if (!rows.length) {
+    el.innerHTML = '<p class="empty-note">No airline has both legs priced for this round trip yet.</p>';
+    return;
+  }
+
+  const rowsHtml = rows
+    .map(
+      (r, i) => `
+      <div class="totals-row ${i === 0 ? "totals-row-best" : ""}">
+        <span class="totals-rank">${i + 1}</span>
+        <span class="swatch" style="background:${getVar(r.series)}"></span>
+        <span class="totals-airline">${r.name}</span>
+        <span class="totals-price">$${r.total}</span>
+      </div>`
+    )
+    .join("");
+  const missingNote = missing.length
+    ? `<p class="status-line" style="margin-top:10px">No round-trip price yet: ${missing.map((r) => r.name).join(", ")}.</p>`
+    : "";
+  el.innerHTML = rowsHtml + missingNote;
+}
+
+async function renderPackageHistory(depDate, retDate) {
+  const statusEl = document.getElementById(PACKAGE_IDS.status);
+  statusEl.textContent = "Loading...";
+
+  const [outRes, retRes] = await Promise.all([
+    sb.from("one_way_prices").select("sample_date,prices").eq("destination", currentDestination).eq("flight_date", depDate).eq("direction", "OUTBOUND").order("sample_date", { ascending: true }),
+    sb.from("one_way_prices").select("sample_date,prices").eq("destination", currentDestination).eq("flight_date", retDate).eq("direction", "RETURN").order("sample_date", { ascending: true }),
+  ]);
+
+  if (outRes.error || retRes.error) {
+    statusEl.textContent = "Failed to load: " + (outRes.error || retRes.error).message;
+    return;
+  }
+
+  const byDate = {};
+  for (const row of outRes.data) byDate[row.sample_date] = { sample_date: row.sample_date, out: row.prices || {} };
+  for (const row of retRes.data) {
+    byDate[row.sample_date] = byDate[row.sample_date] || { sample_date: row.sample_date };
+    byDate[row.sample_date].ret = row.prices || {};
+  }
+
+  const points = Object.values(byDate).sort((a, b) => (a.sample_date < b.sample_date ? -1 : 1));
+  const rows = points.map((p) => {
+    const row = { sample_date: p.sample_date };
+    for (const a of currentAirlines) {
+      const o = p.out ? p.out[a.name] : null;
+      const r = p.ret ? p.ret[a.name] : null;
+      row[a.name] = o != null && r != null ? o + r : null;
+    }
+    return row;
+  });
+
+  if (!rows.length) {
+    statusEl.textContent = "No samples recorded yet for this round trip.";
+    document.getElementById(PACKAGE_IDS.chart).innerHTML = "";
+    document.getElementById(PACKAGE_IDS.tableBody).innerHTML = "";
+    return;
+  }
+
+  statusEl.textContent = `${rows.length} daily samples from ${rows[0].sample_date} to ${rows[rows.length - 1].sample_date}. Departing ${depDate}, returning ${retDate}.`;
+
+  drawLineChart(rows, PACKAGE_IDS);
+  renderHistoryTable(rows, PACKAGE_IDS);
+}
+
+async function refreshPackage() {
+  const dep = document.getElementById("packageDepartureSelect").value;
+  const nights = Number(document.getElementById("packageDurationSelect").value);
+  const ret = toISO(addDays(new Date(dep), nights));
+  renderPackageTotals(dep, ret);
+  await renderPackageHistory(dep, ret);
+}
+
+function pickDefaultPackage() {
+  const nights = DURATIONS[0];
+  for (const dep of allDepartureDates(currentDestination)) {
+    const ret = toISO(addDays(new Date(dep), nights));
+    if (currentAirlines.some((a) => packageTotal(dep, ret, a.name) != null)) return { dep, nights };
+  }
+  return { dep: allDepartureDates(currentDestination)[0], nights };
+}
+
 // ---------- Wiring ----------
 
 const FLIGHT_DIRECTIONS = [
@@ -497,6 +609,14 @@ function populateStaticSelects() {
     opt.value = d.code;
     opt.textContent = d.label;
     destSelect.appendChild(opt);
+  });
+
+  const durationSelect = document.getElementById("packageDurationSelect");
+  DURATIONS.forEach((n) => {
+    const opt = document.createElement("option");
+    opt.value = n;
+    opt.textContent = `${n} nights`;
+    durationSelect.appendChild(opt);
   });
 }
 
@@ -558,6 +678,14 @@ async function loadDestination(destination) {
     document.getElementById(fd.dateSelect).value = pickDefaultDate(fd);
     await refreshFlight(fd);
   }
+
+  populateDateSelect("packageDepartureSelect", allDepartureDates(destination));
+  renderFlightLegend(PACKAGE_IDS.legend);
+  renderFlightTableHead(PACKAGE_IDS.tableHead);
+  const { dep, nights } = pickDefaultPackage();
+  document.getElementById("packageDepartureSelect").value = dep;
+  document.getElementById("packageDurationSelect").value = nights;
+  await refreshPackage();
 }
 
 async function init() {
@@ -568,6 +696,8 @@ async function init() {
   FLIGHT_DIRECTIONS.forEach((fd) => {
     document.getElementById(fd.dateSelect).addEventListener("change", () => refreshFlight(fd));
   });
+  document.getElementById("packageDepartureSelect").addEventListener("change", refreshPackage);
+  document.getElementById("packageDurationSelect").addEventListener("change", refreshPackage);
 
   await loadDestination(currentDestination);
 }

@@ -103,6 +103,38 @@
         </table>
       </div>
     </div>
+    <div class="card">
+      <h2>Trip packages</h2>
+      <p class="hint">Combines an outbound date and a return date into a round-trip total, built entirely from the one-way prices already tracked above &mdash; no new checks, just addition.</p>
+      <div class="controls">
+        <label>Departure date
+          <select id="packageDepartureSelect"></select>
+        </label>
+        <label>Trip length
+          <select id="packageDurationSelect"></select>
+        </label>
+      </div>
+
+      <h3>Cheapest right now</h3>
+      <div id="packageTotals" class="totals-list"></div>
+
+      <h3>Price over time</h3>
+      <div class="legend" id="packageLegend"></div>
+      <div class="chart-shell">
+        <svg id="packageChart"></svg>
+        <div class="tooltip" id="packageTooltip"></div>
+      </div>
+      <p class="status-line" id="packageStatus"></p>
+
+      <h3>Sampled prices &middot; table</h3>
+      <p class="hint">Every daily sample for this round trip since tracking started, most recent first.</p>
+      <div class="table-shell">
+        <table class="history-table">
+          <thead id="packageTableHead"></thead>
+          <tbody id="packageTableBody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
