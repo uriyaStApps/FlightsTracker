@@ -78,63 +78,158 @@ body {
   margin: 0 auto;
 }
 
-/* ---------- Header ---------- */
+/* ---------- Hero header ---------- */
 
-.brand-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 18px 20px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow-sm);
+.hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
   margin-bottom: 16px;
-  flex-wrap: wrap;
+  box-shadow: var(--shadow-md);
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 22px 24px;
 }
 
-.brand-logo {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
+.hero-sky {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle 280px at 78% 52%, rgba(255, 219, 163, 0.9), rgba(255, 163, 102, 0.45) 42%, transparent 72%),
+    linear-gradient(180deg, #16324f 0%, #35618a 32%, #d98a5a 66%, #f0b378 82%, #f6cd9a 100%);
 }
 
-.brand-text {
-  flex: 1;
-  min-width: 200px;
+.hero-mountains,
+.hero-mountains::after {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }
 
-h1 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  margin: 0 0 3px;
+.hero-mountains {
+  height: 48%;
+  background: #1c2836;
+  opacity: 0.5;
+  clip-path: polygon(0% 100%, 0% 58%, 8% 42%, 16% 62%, 26% 32%, 36% 60%, 46% 22%, 58% 54%, 68% 36%, 78% 60%, 88% 44%, 100% 62%, 100% 100%);
 }
 
-.subtitle {
-  color: var(--text-secondary);
-  margin: 0;
-  font-size: 0.88rem;
-  line-height: 1.45;
+.hero-mountains::after {
+  content: "";
+  top: 18%;
+  background: #0c141e;
+  opacity: 0.85;
+  clip-path: polygon(0% 100%, 0% 74%, 10% 58%, 20% 78%, 32% 52%, 44% 76%, 56% 48%, 68% 74%, 80% 55%, 92% 78%, 100% 62%, 100% 100%);
+}
+
+.hero-plane {
+  position: absolute;
+  top: 38%;
+  right: 32%;
+  width: 50px;
+  transform: rotate(-24deg);
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.35));
+}
+
+.hero-plane-icon {
+  width: 100%;
+  height: auto;
+  fill: #fff;
+}
+
+.hero-dest {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 3;
+}
+
+.hero-dest select {
+  font-size: 0.85rem;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(13, 19, 28, 0.45);
+  color: #fff;
+  backdrop-filter: blur(4px);
+  font-family: inherit;
+}
+
+.hero-dest select:focus {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
   max-width: 60ch;
 }
 
-.header-dest {
-  margin-left: auto;
+.hero-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hero-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+  flex-shrink: 0;
+}
+
+h1 {
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: #fff;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.hero-tagline {
+  margin: 8px 0 6px;
+  font-size: 0.76rem;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.88);
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.35);
+}
+
+.hero-content .subtitle {
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.35);
 }
 
 @media (max-width: 640px) {
-  .brand-header {
-    padding: 16px;
+  .hero {
+    min-height: 220px;
+    padding: 18px;
   }
-  .header-dest {
-    margin-left: 0;
+  .hero-dest {
+    position: static;
+    margin-bottom: 14px;
+    align-self: flex-start;
+  }
+  .hero-dest select {
     width: 100%;
   }
-  .header-dest select {
-    width: 100%;
+  .hero-content {
+    max-width: none;
+  }
+  .hero-plane {
+    width: 34px;
+    top: 10%;
+    right: 10%;
   }
 }
 
