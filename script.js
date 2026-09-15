@@ -289,17 +289,16 @@ function renderOneWayHeatmap(svgId, dates, dataByDate, directionLabel) {
 
 function renderTotalsNow(depDate, retDate) {
   const el = document.getElementById("totalsNow");
-  const rows = currentAirlines
-    .map((a) => ({ ...a, total: totalFor(depDate, retDate, a.name) }))
-    .filter((r) => r.total != null)
-    .sort((a, b) => a.total - b.total);
+  const all = currentAirlines.map((a) => ({ ...a, total: totalFor(depDate, retDate, a.name) }));
+  const rows = all.filter((r) => r.total != null).sort((a, b) => a.total - b.total);
+  const missing = all.filter((r) => r.total == null);
 
   if (!rows.length) {
     el.innerHTML = '<p class="empty-note">No airline has both legs priced for this trip in the latest snapshot yet.</p>';
     return;
   }
 
-  el.innerHTML = rows
+  const rowsHtml = rows
     .map(
       (r, i) => `
       <div class="totals-row ${i === 0 ? "totals-row-best" : ""}">
@@ -310,6 +309,17 @@ function renderTotalsNow(depDate, retDate) {
       </div>`
     )
     .join("");
+
+  // Airlines tracked overall but with no price for THIS specific trip need to
+  // say so explicitly -- silently omitting them (as before) reads as "not
+  // tracked at all", not "no data for these two exact dates yet" (real
+  // confusion Uriya hit: SAS looked completely absent from Norway when it
+  // was actually priced on 91% of days, just not this one).
+  const missingNote = missing.length
+    ? `<p class="status-line" style="margin-top:10px">No price yet for this exact trip: ${missing.map((r) => r.name).join(", ")}.</p>`
+    : "";
+
+  el.innerHTML = rowsHtml + missingNote;
 }
 
 async function renderHistory(destination, depDate, retDate) {
