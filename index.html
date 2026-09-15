@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flight Tracker</title>
 <link rel="icon" href="logo.png">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
   <div class="wrap">
@@ -36,20 +36,13 @@
 
     <div class="card">
       <h2>Price by date, each direction</h2>
-      <p class="hint">Latest snapshot &mdash; one line per airline, across every flight date checked. Each direction is checked and shown independently &mdash; outbound and return don't need to both be priced for a day to show up here.</p>
-      <div class="legend" id="heatmapLegend"></div>
+      <p class="hint">Latest snapshot &mdash; one small chart per airline, so each airline's own trend is readable on its own instead of six crossing lines. Each point is one flight date, checked once by the daily job (not multiple checks per day) &mdash; day-to-day zigzags are real fare differences between neighboring flight dates. Each direction is checked and shown independently &mdash; outbound and return don't need to both be priced for a day to show up here.</p>
 
       <h3>Outbound &middot; Tel Aviv &rarr; destination</h3>
-      <div class="chart-shell">
-        <svg id="heatmapOutbound"></svg>
-        <div class="tooltip" id="heatmapTooltipOutbound"></div>
-      </div>
+      <div id="heatmapOutbound" class="mini-chart-grid"></div>
 
       <h3>Return &middot; destination &rarr; Tel Aviv</h3>
-      <div class="chart-shell">
-        <svg id="heatmapReturn"></svg>
-        <div class="tooltip" id="heatmapTooltipReturn"></div>
-      </div>
+      <div id="heatmapReturn" class="mini-chart-grid"></div>
       <p class="status-line" id="heatmapStatus"></p>
     </div>
 
@@ -147,6 +140,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="script.js?v=4"></script>
+  <script src="script.js?v=5"></script>
 </body>
 </html>

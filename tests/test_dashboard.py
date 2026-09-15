@@ -101,20 +101,29 @@ def main():
             # `e.pageX/pageY` placed the tooltip far from the cursor,
             # effectively invisible.
             console_errors.clear()
+            # Each airline gets its own small chart (small multiples) since
+            # 2026-09-15, so there's one hit-area rect + one tooltip div per
+            # airline panel instead of a single shared pair -- find the
+            # tooltip that's a sibling of whichever panel's rect we hover.
+            # Stacking one chart per airline pushes later panels below the
+            # fixed test viewport, and mouse.move (unlike click) does not
+            # auto-scroll -- scroll the target into view first (hit this for
+            # real: hovering the 5th/6th airline silently landed off-screen
+            # and never fired the mousemove listener at all).
             rects = page.locator("#heatmapOutbound rect")
             if rects.count() > 0:
-                idx = min(20, rects.count() - 1)
-                box = rects.nth(idx).bounding_box()
+                target_rect = rects.first
+                target_rect.scroll_into_view_if_needed()
+                box = target_rect.bounding_box()
                 cursor_x, cursor_y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
                 page.mouse.move(cursor_x, cursor_y)
                 page.wait_for_timeout(300)
-                tooltip_text = page.eval_on_selector("#heatmapTooltipOutbound", "el => el.textContent")
+
+                tooltip = target_rect.locator("xpath=../../div[contains(@class,'tooltip')]")
+                tooltip_text = tooltip.text_content()
                 check("hovering the outbound trend chart shows tooltip text", bool(tooltip_text and tooltip_text.strip()))
 
-                tbox = page.eval_on_selector(
-                    "#heatmapTooltipOutbound",
-                    "el => { const r = el.getBoundingClientRect(); return {x: r.x, y: r.y, w: r.width, h: r.height}; }",
-                )
+                tbox = tooltip.evaluate("el => { const r = el.getBoundingClientRect(); return {x: r.x, y: r.y, w: r.width, h: r.height}; }")
                 viewport = page.viewport_size
                 near_cursor = abs(tbox["x"] - cursor_x) < 200 and abs(tbox["y"] - cursor_y) < 200
                 on_screen = 0 <= tbox["x"] <= viewport["width"] and 0 <= tbox["y"] <= viewport["height"]

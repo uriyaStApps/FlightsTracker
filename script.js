@@ -201,20 +201,35 @@ async function renderQuickStats(destination) {
     .join("");
 }
 
-// ---------- Trend overview (one line per airline, across every flight date) ----------
+// ---------- Trend overview (one small chart per airline, across every flight date) ----------
+//
+// Originally one combined multi-series chart (all airlines overlaid on a
+// shared axis). Uriya found that unreadable once real data volume showed
+// up -- six lines crossing each other on every date looked like noisy
+// hourly re-checks when it was really just normal day-to-day fare
+// variation between *different* flight dates, sampled once a day. Small
+// multiples (one chart per airline, own axis) make each airline's actual
+// shape legible instead of a tangle.
 
-function renderOneWayTrend(chartId, tooltipId, dates, dataByDate) {
-  const svg = document.getElementById(chartId);
+// 5th/95th-percentile range instead of raw min/max -- shared with
+// drawLineChart so a thinly-covered series' rare spike doesn't stretch a
+// chart's own axis far past where its real data lives.
+function percentileRange(vals) {
+  const sorted = [...vals].sort((a, b) => a - b);
+  const percentile = (p) => {
+    const idx = (sorted.length - 1) * p;
+    const lo = Math.floor(idx), hi = Math.ceil(idx);
+    return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+  };
+  return { minP: percentile(0.05) * 0.95, maxP: percentile(0.95) * 1.05 };
+}
+
+function renderSmallMultiples(containerId, dates, dataByDate) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
 
   if (!currentAirlines.length) {
-    svg.setAttribute("viewBox", "0 0 900 80");
-    svg.innerHTML = "";
-    const t = svgns("text");
-    t.setAttribute("x", 10);
-    t.setAttribute("y", 40);
-    t.setAttribute("class", "axis-label");
-    t.textContent = "No airline data yet for this destination.";
-    svg.appendChild(t);
+    container.innerHTML = '<p class="empty-note">No airline data yet for this destination.</p>';
     return;
   }
 
@@ -224,9 +239,121 @@ function renderOneWayTrend(chartId, tooltipId, dates, dataByDate) {
     return point;
   });
 
-  drawLineChart(points, { chart: chartId, tooltip: tooltipId }, {
-    labelKey: "label",
-    emptyText: "No airline has a price yet for any date in this range.",
+  currentAirlines.forEach((a, idx) => {
+    const panel = document.createElement("div");
+    panel.className = "mini-chart";
+    panel.innerHTML = `<div class="mini-chart-header"><span class="swatch" style="background:${getVar(a.series)}"></span>${a.name}</div>`;
+
+    const shell = document.createElement("div");
+    shell.className = "chart-shell";
+    const svg = svgns("svg");
+    const tooltip = document.createElement("div");
+    tooltip.className = "tooltip";
+    shell.appendChild(svg);
+    shell.appendChild(tooltip);
+    panel.appendChild(shell);
+    container.appendChild(panel);
+
+    drawSingleSeriesChart(svg, tooltip, points, a, idx === currentAirlines.length - 1);
+  });
+}
+
+function drawSingleSeriesChart(svg, tooltip, points, airline, showAxisLabels) {
+  const width = 900;
+  const height = 140;
+  const margin = { top: 10, right: 12, bottom: showAxisLabels ? 22 : 6, left: 52 };
+  const innerW = width - margin.left - margin.right;
+  const innerH = height - margin.top - margin.bottom;
+
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.innerHTML = "";
+
+  const vals = points.map((p) => p[airline.name]).filter((v) => v != null);
+  if (!vals.length) {
+    const t = svgns("text");
+    t.setAttribute("x", 10);
+    t.setAttribute("y", height / 2);
+    t.setAttribute("class", "axis-label");
+    t.textContent = "No price yet for this airline in this range.";
+    svg.appendChild(t);
+    return;
+  }
+
+  const { minP, maxP } = percentileRange(vals);
+  const x = (i) => margin.left + (innerW * i) / Math.max(points.length - 1, 1);
+  const y = (v) => margin.top + innerH - (innerH * (v - minP)) / (maxP - minP);
+
+  [minP, maxP].forEach((val) => {
+    const gy = y(val);
+    const line = svgns("line");
+    line.setAttribute("x1", margin.left);
+    line.setAttribute("x2", width - margin.right);
+    line.setAttribute("y1", gy);
+    line.setAttribute("y2", gy);
+    line.setAttribute("class", "gridline");
+    svg.appendChild(line);
+
+    const label = svgns("text");
+    label.setAttribute("x", margin.left - 8);
+    label.setAttribute("y", gy + 3);
+    label.setAttribute("text-anchor", "end");
+    label.setAttribute("class", "axis-label");
+    label.textContent = `$${Math.round(val)}`;
+    svg.appendChild(label);
+  });
+
+  if (showAxisLabels) {
+    [0, Math.floor((points.length - 1) / 2), points.length - 1].forEach((i) => {
+      const label = svgns("text");
+      label.setAttribute("x", x(i));
+      label.setAttribute("y", height - 6);
+      label.setAttribute("text-anchor", "middle");
+      label.setAttribute("class", "axis-label");
+      label.textContent = points[i].label;
+      svg.appendChild(label);
+    });
+  }
+
+  let d = "";
+  let started = false;
+  points.forEach((p, i) => {
+    if (p[airline.name] == null) {
+      started = false;
+      return;
+    }
+    const v = Math.max(minP, Math.min(maxP, p[airline.name]));
+    d += `${started ? "L" : "M"}${x(i)},${y(v)} `;
+    started = true;
+  });
+  const path = svgns("path");
+  path.setAttribute("d", d.trim());
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", getVar(airline.series));
+  path.setAttribute("stroke-width", 2);
+  path.setAttribute("stroke-linecap", "round");
+  svg.appendChild(path);
+
+  const hitArea = svgns("rect");
+  hitArea.setAttribute("x", margin.left);
+  hitArea.setAttribute("y", margin.top);
+  hitArea.setAttribute("width", innerW);
+  hitArea.setAttribute("height", innerH);
+  hitArea.setAttribute("fill", "transparent");
+  svg.appendChild(hitArea);
+
+  hitArea.addEventListener("mousemove", (e) => {
+    const rect = svg.getBoundingClientRect();
+    const relX = ((e.clientX - rect.left) / rect.width) * width;
+    const i = Math.round(((relX - margin.left) / innerW) * (points.length - 1));
+    const p = points[Math.max(0, Math.min(points.length - 1, i))];
+    if (!p) return;
+    tooltip.style.display = "block";
+    tooltip.style.left = e.clientX + 12 + "px";
+    tooltip.style.top = e.clientY + 12 + "px";
+    tooltip.textContent = p[airline.name] != null ? `${p.label}: $${p[airline.name]}` : `${p.label}: no price that day`;
+  });
+  hitArea.addEventListener("mouseleave", () => {
+    tooltip.style.display = "none";
   });
 }
 
@@ -343,18 +470,10 @@ function drawLineChart(points, ids, opts = {}) {
   // A robust (percentile-based) range instead of raw min/max: one rare spike
   // from a thinly-covered airline (e.g. an occasional $1000+ fare) would
   // otherwise stretch the axis so far that every other airline's real trend
-  // flattens into a thin band at the bottom. The 5th/95th percentiles keep
-  // the axis matched to where the data actually lives; a genuine outlier
-  // still draws (SVGs overflow visibly), it just isn't allowed to set the
-  // scale for everyone else.
-  const sortedVals = [...allVals].sort((a, b) => a - b);
-  const percentile = (p) => {
-    const idx = (sortedVals.length - 1) * p;
-    const lo = Math.floor(idx), hi = Math.ceil(idx);
-    return lo === hi ? sortedVals[lo] : sortedVals[lo] + (sortedVals[hi] - sortedVals[lo]) * (idx - lo);
-  };
-  const minP = percentile(0.05) * 0.95;
-  const maxP = percentile(0.95) * 1.05;
+  // flattens into a thin band at the bottom. A genuine outlier is clamped
+  // to this range when plotted below (see the clamp comment) so it flattens
+  // against its own chart's edge instead of escaping it.
+  const { minP, maxP } = percentileRange(allVals);
   const x = (i) => margin.left + (innerW * i) / Math.max(points.length - 1, 1);
   const y = (v) => margin.top + innerH - (innerH * (v - minP)) / (maxP - minP);
 
@@ -626,9 +745,8 @@ function pickDefaultDate(fd) {
 }
 
 function renderHeatmaps() {
-  renderFlightLegend("heatmapLegend");
-  renderOneWayTrend("heatmapOutbound", "heatmapTooltipOutbound", allDepartureDates(currentDestination), outboundLatest);
-  renderOneWayTrend("heatmapReturn", "heatmapTooltipReturn", allReturnDates(currentDestination), returnLatest);
+  renderSmallMultiples("heatmapOutbound", allDepartureDates(currentDestination), outboundLatest);
+  renderSmallMultiples("heatmapReturn", allReturnDates(currentDestination), returnLatest);
 }
 
 async function loadDestination(destination) {
