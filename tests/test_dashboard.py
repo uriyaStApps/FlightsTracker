@@ -70,12 +70,12 @@ def main():
                 page.eval_on_selector_all("#destinationSelect option", "els => els.length") == len(DESTINATIONS),
             )
             check(
-                "duration dropdown is populated",
-                page.eval_on_selector_all("#durationSelect2 option", "els => els.length") > 0,
+                "outbound date dropdown is populated",
+                page.eval_on_selector_all("#outboundDateSelect option", "els => els.length") > 0,
             )
             check(
-                "departure date dropdown is populated",
-                page.eval_on_selector_all("#departureSelect option", "els => els.length") > 0,
+                "return date dropdown is populated",
+                page.eval_on_selector_all("#returnDateSelect option", "els => els.length") > 0,
             )
             check(
                 "outbound heatmap rendered at least one cell",

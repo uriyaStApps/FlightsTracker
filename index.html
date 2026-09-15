@@ -45,34 +45,61 @@
     </div>
 
     <div class="card">
-      <h2>Pick a trip</h2>
-      <p class="hint">Combine one outbound and one return day into a full round trip.</p>
+      <h2>Outbound flight &middot; Tel Aviv &rarr; destination</h2>
+      <p class="hint">One date, on its own &mdash; not combined with any return flight.</p>
       <div class="controls">
-        <label>Departure date
-          <select id="departureSelect"></select>
-        </label>
-        <label>Trip length
-          <select id="durationSelect2"></select>
+        <label>Date
+          <select id="outboundDateSelect"></select>
         </label>
       </div>
 
       <h3>Cheapest right now</h3>
-      <div id="totalsNow" class="totals-list"></div>
+      <div id="outboundTotals" class="totals-list"></div>
 
       <h3>Price over time</h3>
-      <div class="legend" id="tripLegend"></div>
+      <div class="legend" id="outboundLegend"></div>
       <div class="chart-shell">
-        <svg id="lineChart"></svg>
-        <div class="tooltip" id="lineTooltip"></div>
+        <svg id="outboundChart"></svg>
+        <div class="tooltip" id="outboundTooltip"></div>
       </div>
-      <p class="status-line" id="lineStatus"></p>
+      <p class="status-line" id="outboundStatus"></p>
 
       <h3>Sampled prices &middot; table</h3>
-      <p class="hint">Every daily sample for this trip since tracking started, most recent first. Round-trip total per airline.</p>
+      <p class="hint">Every daily sample for this date since tracking started, most recent first.</p>
       <div class="table-shell">
         <table class="history-table">
-          <thead id="historyTableHead"></thead>
-          <tbody id="historyTableBody"></tbody>
+          <thead id="outboundTableHead"></thead>
+          <tbody id="outboundTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Return flight &middot; destination &rarr; Tel Aviv</h2>
+      <p class="hint">One date, on its own &mdash; not combined with any outbound flight.</p>
+      <div class="controls">
+        <label>Date
+          <select id="returnDateSelect"></select>
+        </label>
+      </div>
+
+      <h3>Cheapest right now</h3>
+      <div id="returnTotals" class="totals-list"></div>
+
+      <h3>Price over time</h3>
+      <div class="legend" id="returnLegend"></div>
+      <div class="chart-shell">
+        <svg id="returnChart"></svg>
+        <div class="tooltip" id="returnTooltip"></div>
+      </div>
+      <p class="status-line" id="returnStatus"></p>
+
+      <h3>Sampled prices &middot; table</h3>
+      <p class="hint">Every daily sample for this date since tracking started, most recent first.</p>
+      <div class="table-shell">
+        <table class="history-table">
+          <thead id="returnTableHead"></thead>
+          <tbody id="returnTableBody"></tbody>
         </table>
       </div>
     </div>

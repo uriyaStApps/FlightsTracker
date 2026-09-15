@@ -147,11 +147,8 @@ async function loadLatestSnapshot(destination) {
   document.getElementById("heatmapStatus").textContent = `Snapshot from ${latestSampleDate} (${data.length} one-way checks that day).`;
 }
 
-function totalFor(depDate, retDate, airlineName) {
-  const out = outboundLatest[depDate];
-  const ret = returnLatest[retDate];
-  if (!out || !ret || out[airlineName] == null || ret[airlineName] == null) return null;
-  return out[airlineName] + ret[airlineName];
+function latestFor(direction) {
+  return direction === "OUTBOUND" ? outboundLatest : returnLatest;
 }
 
 // ---------- Quick stats (cheapest ever seen, full history) ----------
@@ -285,16 +282,17 @@ function renderOneWayHeatmap(svgId, dates, dataByDate, directionLabel) {
   });
 }
 
-// ---------- Trip detail: totals now, history chart, samples table ----------
+// ---------- Flight detail (outbound and return handled identically, each on its own) ----------
 
-function renderTotalsNow(depDate, retDate) {
-  const el = document.getElementById("totalsNow");
-  const all = currentAirlines.map((a) => ({ ...a, total: totalFor(depDate, retDate, a.name) }));
-  const rows = all.filter((r) => r.total != null).sort((a, b) => a.total - b.total);
-  const missing = all.filter((r) => r.total == null);
+function renderOneWayTotals(containerId, direction, date) {
+  const el = document.getElementById(containerId);
+  const prices = latestFor(direction)[date] || {};
+  const all = currentAirlines.map((a) => ({ ...a, price: prices[a.name] ?? null }));
+  const rows = all.filter((r) => r.price != null).sort((a, b) => a.price - b.price);
+  const missing = all.filter((r) => r.price == null);
 
   if (!rows.length) {
-    el.innerHTML = '<p class="empty-note">No airline has both legs priced for this trip in the latest snapshot yet.</p>';
+    el.innerHTML = '<p class="empty-note">No airline has a price for this date in the latest snapshot yet.</p>';
     return;
   }
 
@@ -305,84 +303,61 @@ function renderTotalsNow(depDate, retDate) {
         <span class="totals-rank">${i + 1}</span>
         <span class="swatch" style="background:${getVar(r.series)}"></span>
         <span class="totals-airline">${r.name}</span>
-        <span class="totals-price">$${r.total}</span>
+        <span class="totals-price">$${r.price}</span>
       </div>`
     )
     .join("");
 
-  // Airlines tracked overall but with no price for THIS specific trip need to
-  // say so explicitly -- silently omitting them (as before) reads as "not
-  // tracked at all", not "no data for these two exact dates yet" (real
-  // confusion Uriya hit: SAS looked completely absent from Norway when it
-  // was actually priced on 91% of days, just not this one).
+  // Airlines tracked overall but with no price for THIS specific date need to
+  // say so explicitly -- silently omitting them reads as "not tracked at
+  // all", not "no data for this exact date yet" (real confusion Uriya hit:
+  // SAS looked completely absent from Norway when it was actually priced on
+  // 91% of days, just not this one).
   const missingNote = missing.length
-    ? `<p class="status-line" style="margin-top:10px">No price yet for this exact trip: ${missing.map((r) => r.name).join(", ")}.</p>`
+    ? `<p class="status-line" style="margin-top:10px">No price yet for this date: ${missing.map((r) => r.name).join(", ")}.</p>`
     : "";
 
   el.innerHTML = rowsHtml + missingNote;
 }
 
-async function renderHistory(destination, depDate, retDate) {
-  const statusEl = document.getElementById("lineStatus");
+async function renderOneWayHistory(direction, date, ids) {
+  const statusEl = document.getElementById(ids.status);
   statusEl.textContent = "Loading...";
 
-  const [outRes, retRes] = await Promise.all([
-    sb
-      .from("one_way_prices")
-      .select("sample_date,prices")
-      .eq("destination", destination)
-      .eq("flight_date", depDate)
-      .eq("direction", "OUTBOUND")
-      .order("sample_date", { ascending: true }),
-    sb
-      .from("one_way_prices")
-      .select("sample_date,prices")
-      .eq("destination", destination)
-      .eq("flight_date", retDate)
-      .eq("direction", "RETURN")
-      .order("sample_date", { ascending: true }),
-  ]);
+  const { data, error } = await sb
+    .from("one_way_prices")
+    .select("sample_date,prices")
+    .eq("destination", currentDestination)
+    .eq("flight_date", date)
+    .eq("direction", direction)
+    .order("sample_date", { ascending: true });
 
-  if (outRes.error || retRes.error) {
-    statusEl.textContent = "Failed to load: " + (outRes.error || retRes.error).message;
+  if (error) {
+    statusEl.textContent = "Failed to load: " + error.message;
     return;
   }
 
-  const byDate = {};
-  for (const row of outRes.data) {
-    byDate[row.sample_date] = { sample_date: row.sample_date, out: row.prices || {} };
-  }
-  for (const row of retRes.data) {
-    byDate[row.sample_date] = byDate[row.sample_date] || { sample_date: row.sample_date };
-    byDate[row.sample_date].ret = row.prices || {};
-  }
-
-  const points = Object.values(byDate).sort((a, b) => (a.sample_date < b.sample_date ? -1 : 1));
-  const rows = points.map((p) => {
-    const row = { sample_date: p.sample_date };
-    for (const a of currentAirlines) {
-      const o = p.out ? p.out[a.name] : null;
-      const r = p.ret ? p.ret[a.name] : null;
-      row[a.name] = o != null && r != null ? o + r : null;
-    }
-    return row;
+  const rows = data.map((row) => {
+    const r = { sample_date: row.sample_date };
+    for (const a of currentAirlines) r[a.name] = row.prices ? row.prices[a.name] ?? null : null;
+    return r;
   });
 
   if (!rows.length) {
-    statusEl.textContent = "No samples recorded yet for this trip.";
-    document.getElementById("lineChart").innerHTML = "";
-    document.getElementById("historyTableBody").innerHTML = "";
+    statusEl.textContent = "No samples recorded yet for this date.";
+    document.getElementById(ids.chart).innerHTML = "";
+    document.getElementById(ids.tableBody).innerHTML = "";
     return;
   }
 
-  statusEl.textContent = `${rows.length} daily samples from ${rows[0].sample_date} to ${rows[rows.length - 1].sample_date}. Departing ${depDate}, returning ${retDate}.`;
+  statusEl.textContent = `${rows.length} daily samples from ${rows[0].sample_date} to ${rows[rows.length - 1].sample_date}.`;
 
-  drawLineChart(rows);
-  renderHistoryTable(rows);
+  drawLineChart(rows, ids);
+  renderHistoryTable(rows, ids);
 }
 
-function renderHistoryTable(rows) {
-  const tbody = document.getElementById("historyTableBody");
+function renderHistoryTable(rows, ids) {
+  const tbody = document.getElementById(ids.tableBody);
   tbody.innerHTML = "";
   [...rows].reverse().forEach((row) => {
     const cells = currentAirlines.map((a) => `<td>${row[a.name] != null ? "$" + row[a.name] : "-"}</td>`).join("");
@@ -392,14 +367,14 @@ function renderHistoryTable(rows) {
   });
 }
 
-function drawLineChart(points) {
+function drawLineChart(points, ids) {
   const width = 900;
   const height = 320;
   const margin = { top: 16, right: 16, bottom: 28, left: 52 };
   const innerW = width - margin.left - margin.right;
   const innerH = height - margin.top - margin.bottom;
 
-  const svg = document.getElementById("lineChart");
+  const svg = document.getElementById(ids.chart);
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.innerHTML = "";
 
@@ -410,7 +385,7 @@ function drawLineChart(points) {
     t.setAttribute("y", height / 2);
     t.setAttribute("text-anchor", "middle");
     t.setAttribute("class", "axis-label");
-    t.textContent = "No airline has both legs priced yet for this trip";
+    t.textContent = "No airline has a price yet for this date";
     svg.appendChild(t);
     return;
   }
@@ -472,7 +447,7 @@ function drawLineChart(points) {
     svg.appendChild(path);
   });
 
-  const tooltip = document.getElementById("lineTooltip");
+  const tooltip = document.getElementById(ids.tooltip);
   const hitArea = svgns("rect");
   hitArea.setAttribute("x", margin.left);
   hitArea.setAttribute("y", margin.top);
@@ -500,15 +475,22 @@ function drawLineChart(points) {
 
 // ---------- Wiring ----------
 
-function populateStaticSelects() {
-  const durationSelect2 = document.getElementById("durationSelect2");
-  DURATIONS.forEach((n) => {
-    const opt = document.createElement("option");
-    opt.value = n;
-    opt.textContent = `${n} nights`;
-    durationSelect2.appendChild(opt);
-  });
+const FLIGHT_DIRECTIONS = [
+  {
+    direction: "OUTBOUND",
+    dateSelect: "outboundDateSelect",
+    dates: () => allDepartureDates(currentDestination),
+    ids: { totals: "outboundTotals", legend: "outboundLegend", status: "outboundStatus", chart: "outboundChart", tooltip: "outboundTooltip", tableHead: "outboundTableHead", tableBody: "outboundTableBody" },
+  },
+  {
+    direction: "RETURN",
+    dateSelect: "returnDateSelect",
+    dates: () => allReturnDates(currentDestination),
+    ids: { totals: "returnTotals", legend: "returnLegend", status: "returnStatus", chart: "returnChart", tooltip: "returnTooltip", tableHead: "returnTableHead", tableBody: "returnTableBody" },
+  },
+];
 
+function populateStaticSelects() {
   const destSelect = document.getElementById("destinationSelect");
   DESTINATIONS.forEach((d) => {
     const opt = document.createElement("option");
@@ -516,52 +498,46 @@ function populateStaticSelects() {
     opt.textContent = d.label;
     destSelect.appendChild(opt);
   });
-
-  populateDepartureSelect(currentDestination);
 }
 
-function populateDepartureSelect(destinationCode) {
-  const departureSelect = document.getElementById("departureSelect");
-  departureSelect.innerHTML = "";
-  allDepartureDates(destinationCode).forEach((d) => {
+function populateDateSelect(selectId, dates) {
+  const select = document.getElementById(selectId);
+  select.innerHTML = "";
+  dates.forEach((d) => {
     const opt = document.createElement("option");
     opt.value = d;
     opt.textContent = d;
-    departureSelect.appendChild(opt);
+    select.appendChild(opt);
   });
 }
 
-function renderDynamicLegends() {
-  const legendEl = document.getElementById("tripLegend");
-  legendEl.innerHTML = currentAirlines
-    .map((a) => `<span><span class="swatch" style="background:${getVar(a.series)}"></span>${a.name}</span>`)
-    .join("") || '<span class="empty-note">No airlines yet</span>';
-
-  const tableHead = document.getElementById("historyTableHead");
-  tableHead.innerHTML = `<tr><th>Date checked</th>${currentAirlines.map((a) => `<th>${a.name}</th>`).join("")}</tr>`;
+function renderFlightLegend(legendId) {
+  const el = document.getElementById(legendId);
+  el.innerHTML =
+    currentAirlines.map((a) => `<span><span class="swatch" style="background:${getVar(a.series)}"></span>${a.name}</span>`).join("") ||
+    '<span class="empty-note">No airlines yet</span>';
 }
 
-async function refreshTripDetail() {
-  const departureSelect = document.getElementById("departureSelect");
-  const durationSelect2 = document.getElementById("durationSelect2");
-  const dep = departureSelect.value;
-  const ret = toISO(addDays(new Date(dep), Number(durationSelect2.value)));
-  renderTotalsNow(dep, ret);
-  await renderHistory(currentDestination, dep, ret);
+function renderFlightTableHead(theadId) {
+  document.getElementById(theadId).innerHTML = `<tr><th>Date checked</th>${currentAirlines.map((a) => `<th>${a.name}</th>`).join("")}</tr>`;
 }
 
-// Land on a trip that actually has a priced airline instead of always the
-// first date in the range (which is very likely empty and makes the whole
-// "Pick a trip" section look broken on first load).
-function pickDefaultTrip() {
-  const nights = DURATIONS[0];
-  for (const dep of allDepartureDates(currentDestination)) {
-    const ret = toISO(addDays(new Date(dep), nights));
-    if (currentAirlines.some((a) => totalFor(dep, ret, a.name) != null)) {
-      return { dep, nights };
-    }
+async function refreshFlight(fd) {
+  const date = document.getElementById(fd.dateSelect).value;
+  renderOneWayTotals(fd.ids.totals, fd.direction, date);
+  await renderOneWayHistory(fd.direction, date, fd.ids);
+}
+
+// Land on a date that actually has a priced airline instead of always the
+// first one in the range (which is very likely empty and makes the whole
+// section look broken on first load).
+function pickDefaultDate(fd) {
+  const dates = fd.dates();
+  const data = latestFor(fd.direction);
+  for (const d of dates) {
+    if (data[d] && currentAirlines.some((a) => data[d][a.name] != null)) return d;
   }
-  return { dep: allDepartureDates(currentDestination)[0], nights };
+  return dates[0];
 }
 
 function renderHeatmaps() {
@@ -571,16 +547,17 @@ function renderHeatmaps() {
 
 async function loadDestination(destination) {
   currentDestination = destination;
-  populateDepartureSelect(destination);
   await loadLatestSnapshot(destination);
-  renderDynamicLegends();
   renderHeatmaps();
   renderQuickStats(destination);
 
-  const { dep, nights } = pickDefaultTrip();
-  document.getElementById("departureSelect").value = dep;
-  document.getElementById("durationSelect2").value = nights;
-  await refreshTripDetail();
+  for (const fd of FLIGHT_DIRECTIONS) {
+    populateDateSelect(fd.dateSelect, fd.dates());
+    renderFlightLegend(fd.ids.legend);
+    renderFlightTableHead(fd.ids.tableHead);
+    document.getElementById(fd.dateSelect).value = pickDefaultDate(fd);
+    await refreshFlight(fd);
+  }
 }
 
 async function init() {
@@ -588,8 +565,9 @@ async function init() {
   renderHeatmapLegend();
 
   document.getElementById("destinationSelect").addEventListener("change", (e) => loadDestination(e.target.value));
-  document.getElementById("departureSelect").addEventListener("change", refreshTripDetail);
-  document.getElementById("durationSelect2").addEventListener("change", refreshTripDetail);
+  FLIGHT_DIRECTIONS.forEach((fd) => {
+    document.getElementById(fd.dateSelect).addEventListener("change", () => refreshFlight(fd));
+  });
 
   await loadDestination(currentDestination);
 }
