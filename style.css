@@ -63,8 +63,9 @@
 body {
   margin: 0;
   background:
-    radial-gradient(ellipse 1100px 480px at 50% -80px, color-mix(in srgb, var(--accent) 16%, transparent), transparent),
-    var(--page);
+    radial-gradient(ellipse 1200px 900px at 15% -10%, color-mix(in srgb, var(--series-1) 20%, transparent), transparent 60%),
+    radial-gradient(ellipse 1000px 700px at 100% 10%, color-mix(in srgb, var(--series-3) 16%, transparent), transparent 60%),
+    linear-gradient(180deg, var(--page) 0%, var(--page) 100%);
   background-attachment: fixed;
   color: var(--text-primary);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
