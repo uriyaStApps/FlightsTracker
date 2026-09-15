@@ -397,7 +397,19 @@ function drawLineChart(points, ids, opts = {}) {
         started = false;
         return;
       }
-      d += `${started ? "L" : "M"}${x(i)},${y(p[a.name])} `;
+      // Clamp to the plotted domain -- the percentile-based range above
+      // deliberately excludes extreme outliers so they can't compress every
+      // other airline's line, but that means a real outlier now sits outside
+      // [minP, maxP]. Plotting it unclamped relies on SVG's `overflow:
+      // visible` to still show it -- which does technically draw it, but as
+      // a stray line escaping this chart's own box into whatever content
+      // happens to sit above it on the page (hit this for real: an Air
+      // France spike rendered as a vertical line cutting through the
+      // "Cheapest ever seen" card, a section entirely unrelated to this
+      // chart). Clamping keeps every line inside its own chart -- an
+      // outlier flattens against the top/bottom edge instead of escaping.
+      const v = Math.max(minP, Math.min(maxP, p[a.name]));
+      d += `${started ? "L" : "M"}${x(i)},${y(v)} `;
       started = true;
     });
     if (!d) return;
