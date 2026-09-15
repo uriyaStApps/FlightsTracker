@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flight Tracker</title>
 <link rel="icon" href="logo.png">
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <div class="wrap">
@@ -59,11 +59,7 @@
       <div id="outboundTotals" class="totals-list"></div>
 
       <h3>Price over time</h3>
-      <div class="legend" id="outboundLegend"></div>
-      <div class="chart-shell">
-        <svg id="outboundChart"></svg>
-        <div class="tooltip" id="outboundTooltip"></div>
-      </div>
+      <div id="outboundChart" class="mini-chart-grid"></div>
       <p class="status-line" id="outboundStatus"></p>
 
       <h3>Sampled prices &middot; table</h3>
@@ -89,11 +85,7 @@
       <div id="returnTotals" class="totals-list"></div>
 
       <h3>Price over time</h3>
-      <div class="legend" id="returnLegend"></div>
-      <div class="chart-shell">
-        <svg id="returnChart"></svg>
-        <div class="tooltip" id="returnTooltip"></div>
-      </div>
+      <div id="returnChart" class="mini-chart-grid"></div>
       <p class="status-line" id="returnStatus"></p>
 
       <h3>Sampled prices &middot; table</h3>
@@ -121,11 +113,7 @@
       <div id="packageTotals" class="totals-list"></div>
 
       <h3>Price over time</h3>
-      <div class="legend" id="packageLegend"></div>
-      <div class="chart-shell">
-        <svg id="packageChart"></svg>
-        <div class="tooltip" id="packageTooltip"></div>
-      </div>
+      <div id="packageChart" class="mini-chart-grid"></div>
       <p class="status-line" id="packageStatus"></p>
 
       <h3>Sampled prices &middot; table</h3>
@@ -140,6 +128,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="script.js?v=6"></script>
+  <script src="script.js?v=7"></script>
 </body>
 </html>

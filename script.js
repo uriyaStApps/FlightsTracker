@@ -211,9 +211,9 @@ async function renderQuickStats(destination) {
 // multiples (one chart per airline, own axis) make each airline's actual
 // shape legible instead of a tangle.
 
-// 5th/95th-percentile range instead of raw min/max -- shared with
-// drawLineChart so a thinly-covered series' rare spike doesn't stretch a
-// chart's own axis far past where its real data lives.
+// 5th/95th-percentile range instead of raw min/max, so a thinly-covered
+// series' rare spike doesn't stretch its chart's axis far past where its
+// real data lives.
 function percentileRange(vals) {
   const sorted = [...vals].sort((a, b) => a - b);
   const percentile = (p) => {
@@ -224,7 +224,16 @@ function percentileRange(vals) {
   return { minP: percentile(0.05) * 0.95, maxP: percentile(0.95) * 1.05 };
 }
 
-function renderSmallMultiples(containerId, dates, dataByDate) {
+// Shared by every small-multiples view (the trend-by-flight-date charts
+// above, and the per-date sample-history charts below) -- one panel per
+// currently-tracked airline, each with its own axis. Besides making
+// crossing lines legible, this also makes a wrong-airline misread
+// structurally impossible: each panel has exactly one color and its name
+// printed right above it, instead of relying on a shared legend that two
+// adjacent hues (e.g. a blue and a dark indigo-purple) can make easy to
+// mix up (hit this for real: a flat Air France line was read as
+// Scandinavian Airlines/SAS because their line colors sit close together).
+function renderAirlinePanels(containerId, points, labelKey) {
   const container = document.getElementById(containerId);
   container.innerHTML = "";
 
@@ -232,12 +241,6 @@ function renderSmallMultiples(containerId, dates, dataByDate) {
     container.innerHTML = '<p class="empty-note">No airline data yet for this destination.</p>';
     return;
   }
-
-  const points = dates.map((d) => {
-    const point = { label: d };
-    for (const a of currentAirlines) point[a.name] = dataByDate[d] ? dataByDate[d][a.name] ?? null : null;
-    return point;
-  });
 
   currentAirlines.forEach((a, idx) => {
     const panel = document.createElement("div");
@@ -254,11 +257,20 @@ function renderSmallMultiples(containerId, dates, dataByDate) {
     panel.appendChild(shell);
     container.appendChild(panel);
 
-    drawSingleSeriesChart(svg, tooltip, points, a, idx === currentAirlines.length - 1);
+    drawSingleSeriesChart(svg, tooltip, points, a, idx === currentAirlines.length - 1, labelKey);
   });
 }
 
-function drawSingleSeriesChart(svg, tooltip, points, airline, showAxisLabels) {
+function renderSmallMultiples(containerId, dates, dataByDate) {
+  const points = dates.map((d) => {
+    const point = { label: d };
+    for (const a of currentAirlines) point[a.name] = dataByDate[d] ? dataByDate[d][a.name] ?? null : null;
+    return point;
+  });
+  renderAirlinePanels(containerId, points, "label");
+}
+
+function drawSingleSeriesChart(svg, tooltip, points, airline, showAxisLabels, labelKey = "label") {
   const width = 900;
   const height = 60;
   const margin = { top: 6, right: 10, bottom: showAxisLabels ? 16 : 4, left: 44 };
@@ -309,7 +321,7 @@ function drawSingleSeriesChart(svg, tooltip, points, airline, showAxisLabels) {
       label.setAttribute("y", height - 6);
       label.setAttribute("text-anchor", "middle");
       label.setAttribute("class", "axis-label");
-      label.textContent = points[i].label;
+      label.textContent = points[i][labelKey];
       svg.appendChild(label);
     });
   }
@@ -333,6 +345,26 @@ function drawSingleSeriesChart(svg, tooltip, points, airline, showAxisLabels) {
   path.setAttribute("stroke-linecap", "round");
   svg.appendChild(path);
 
+  // A point with no priced neighbor on either side has no line segment to
+  // draw (a lone "M" with no "L" is invisible) -- with only a few daily
+  // samples so far, that's common, and it made a real data point (SAS's
+  // only price in a 3-sample window) look like an empty panel instead of
+  // one known value. Mark isolated points explicitly so they're visible.
+  points.forEach((p, i) => {
+    const v = p[airline.name];
+    if (v == null) return;
+    const prevConnected = i > 0 && points[i - 1][airline.name] != null;
+    const nextConnected = i < points.length - 1 && points[i + 1][airline.name] != null;
+    if (prevConnected || nextConnected) return;
+    const cv = Math.max(minP, Math.min(maxP, v));
+    const circle = svgns("circle");
+    circle.setAttribute("cx", x(i));
+    circle.setAttribute("cy", y(cv));
+    circle.setAttribute("r", 2.5);
+    circle.setAttribute("fill", getVar(airline.series));
+    svg.appendChild(circle);
+  });
+
   const hitArea = svgns("rect");
   hitArea.setAttribute("x", margin.left);
   hitArea.setAttribute("y", margin.top);
@@ -350,7 +382,7 @@ function drawSingleSeriesChart(svg, tooltip, points, airline, showAxisLabels) {
     tooltip.style.display = "block";
     tooltip.style.left = e.clientX + 12 + "px";
     tooltip.style.top = e.clientY + 12 + "px";
-    tooltip.textContent = p[airline.name] != null ? `${p.label}: $${p[airline.name]}` : `${p.label}: no price that day`;
+    tooltip.textContent = p[airline.name] != null ? `${p[labelKey]}: $${p[airline.name]}` : `${p[labelKey]}: no price that day`;
   });
   hitArea.addEventListener("mouseleave", () => {
     tooltip.style.display = "none";
@@ -427,7 +459,7 @@ async function renderOneWayHistory(direction, date, ids) {
 
   statusEl.textContent = `${rows.length} daily samples from ${rows[0].sample_date} to ${rows[rows.length - 1].sample_date}.`;
 
-  drawLineChart(rows, ids);
+  renderAirlinePanels(ids.chart, rows, "sample_date");
   renderHistoryTable(rows, ids);
 }
 
@@ -442,139 +474,12 @@ function renderHistoryTable(rows, ids) {
   });
 }
 
-function drawLineChart(points, ids, opts = {}) {
-  const labelKey = opts.labelKey || "sample_date";
-  const emptyText = opts.emptyText || "No airline has a price yet for this date";
-  const width = 900;
-  const height = 320;
-  const margin = { top: 16, right: 16, bottom: 28, left: 52 };
-  const innerW = width - margin.left - margin.right;
-  const innerH = height - margin.top - margin.bottom;
-
-  const svg = document.getElementById(ids.chart);
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.innerHTML = "";
-
-  const allVals = points.flatMap((p) => currentAirlines.map((a) => p[a.name])).filter((v) => v != null);
-  if (!allVals.length) {
-    const t = svgns("text");
-    t.setAttribute("x", width / 2);
-    t.setAttribute("y", height / 2);
-    t.setAttribute("text-anchor", "middle");
-    t.setAttribute("class", "axis-label");
-    t.textContent = emptyText;
-    svg.appendChild(t);
-    return;
-  }
-
-  // A robust (percentile-based) range instead of raw min/max: one rare spike
-  // from a thinly-covered airline (e.g. an occasional $1000+ fare) would
-  // otherwise stretch the axis so far that every other airline's real trend
-  // flattens into a thin band at the bottom. A genuine outlier is clamped
-  // to this range when plotted below (see the clamp comment) so it flattens
-  // against its own chart's edge instead of escaping it.
-  const { minP, maxP } = percentileRange(allVals);
-  const x = (i) => margin.left + (innerW * i) / Math.max(points.length - 1, 1);
-  const y = (v) => margin.top + innerH - (innerH * (v - minP)) / (maxP - minP);
-
-  const ticks = 4;
-  for (let i = 0; i <= ticks; i++) {
-    const val = minP + ((maxP - minP) * i) / ticks;
-    const gy = y(val);
-    const line = svgns("line");
-    line.setAttribute("x1", margin.left);
-    line.setAttribute("x2", width - margin.right);
-    line.setAttribute("y1", gy);
-    line.setAttribute("y2", gy);
-    line.setAttribute("class", "gridline");
-    svg.appendChild(line);
-
-    const label = svgns("text");
-    label.setAttribute("x", margin.left - 8);
-    label.setAttribute("y", gy + 3);
-    label.setAttribute("text-anchor", "end");
-    label.setAttribute("class", "axis-label");
-    label.textContent = `$${Math.round(val)}`;
-    svg.appendChild(label);
-  }
-
-  [0, Math.floor((points.length - 1) / 2), points.length - 1].forEach((i) => {
-    const label = svgns("text");
-    label.setAttribute("x", x(i));
-    label.setAttribute("y", height - margin.bottom + 16);
-    label.setAttribute("text-anchor", "middle");
-    label.setAttribute("class", "axis-label");
-    label.textContent = points[i][labelKey];
-    svg.appendChild(label);
-  });
-
-  currentAirlines.forEach((a) => {
-    let d = "";
-    let started = false;
-    points.forEach((p, i) => {
-      if (p[a.name] == null) {
-        started = false;
-        return;
-      }
-      // Clamp to the plotted domain -- the percentile-based range above
-      // deliberately excludes extreme outliers so they can't compress every
-      // other airline's line, but that means a real outlier now sits outside
-      // [minP, maxP]. Plotting it unclamped relies on SVG's `overflow:
-      // visible` to still show it -- which does technically draw it, but as
-      // a stray line escaping this chart's own box into whatever content
-      // happens to sit above it on the page (hit this for real: an Air
-      // France spike rendered as a vertical line cutting through the
-      // "Cheapest ever seen" card, a section entirely unrelated to this
-      // chart). Clamping keeps every line inside its own chart -- an
-      // outlier flattens against the top/bottom edge instead of escaping.
-      const v = Math.max(minP, Math.min(maxP, p[a.name]));
-      d += `${started ? "L" : "M"}${x(i)},${y(v)} `;
-      started = true;
-    });
-    if (!d) return;
-    const path = svgns("path");
-    path.setAttribute("d", d.trim());
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke", getVar(a.series));
-    path.setAttribute("stroke-width", 2);
-    path.setAttribute("stroke-linecap", "round");
-    svg.appendChild(path);
-  });
-
-  const tooltip = document.getElementById(ids.tooltip);
-  const hitArea = svgns("rect");
-  hitArea.setAttribute("x", margin.left);
-  hitArea.setAttribute("y", margin.top);
-  hitArea.setAttribute("width", innerW);
-  hitArea.setAttribute("height", innerH);
-  hitArea.setAttribute("fill", "transparent");
-  svg.appendChild(hitArea);
-
-  hitArea.addEventListener("mousemove", (e) => {
-    const rect = svg.getBoundingClientRect();
-    const relX = ((e.clientX - rect.left) / rect.width) * width;
-    const i = Math.round(((relX - margin.left) / innerW) * (points.length - 1));
-    const p = points[Math.max(0, Math.min(points.length - 1, i))];
-    if (!p) return;
-    tooltip.style.display = "block";
-    tooltip.style.left = e.clientX + 12 + "px";
-    tooltip.style.top = e.clientY + 12 + "px";
-    tooltip.innerHTML =
-      `${p[labelKey]}<br>` + currentAirlines.map((a) => `${a.name}: ${p[a.name] != null ? "$" + p[a.name] : "-"}`).join("<br>");
-  });
-  hitArea.addEventListener("mouseleave", () => {
-    tooltip.style.display = "none";
-  });
-}
-
 // ---------- Trip packages (outbound + return combined, additive on top of the one-way views) ----------
 
 const PACKAGE_IDS = {
   totals: "packageTotals",
-  legend: "packageLegend",
   status: "packageStatus",
   chart: "packageChart",
-  tooltip: "packageTooltip",
   tableHead: "packageTableHead",
   tableBody: "packageTableBody",
 };
@@ -648,7 +553,7 @@ async function renderPackageHistory(depDate, retDate) {
 
   statusEl.textContent = `${rows.length} daily samples from ${rows[0].sample_date} to ${rows[rows.length - 1].sample_date}. Departing ${depDate}, returning ${retDate}.`;
 
-  drawLineChart(rows, PACKAGE_IDS);
+  renderAirlinePanels(PACKAGE_IDS.chart, rows, "sample_date");
   renderHistoryTable(rows, PACKAGE_IDS);
 }
 
@@ -676,13 +581,13 @@ const FLIGHT_DIRECTIONS = [
     direction: "OUTBOUND",
     dateSelect: "outboundDateSelect",
     dates: () => allDepartureDates(currentDestination),
-    ids: { totals: "outboundTotals", legend: "outboundLegend", status: "outboundStatus", chart: "outboundChart", tooltip: "outboundTooltip", tableHead: "outboundTableHead", tableBody: "outboundTableBody" },
+    ids: { totals: "outboundTotals", status: "outboundStatus", chart: "outboundChart", tableHead: "outboundTableHead", tableBody: "outboundTableBody" },
   },
   {
     direction: "RETURN",
     dateSelect: "returnDateSelect",
     dates: () => allReturnDates(currentDestination),
-    ids: { totals: "returnTotals", legend: "returnLegend", status: "returnStatus", chart: "returnChart", tooltip: "returnTooltip", tableHead: "returnTableHead", tableBody: "returnTableBody" },
+    ids: { totals: "returnTotals", status: "returnStatus", chart: "returnChart", tableHead: "returnTableHead", tableBody: "returnTableBody" },
   },
 ];
 
@@ -713,13 +618,6 @@ function populateDateSelect(selectId, dates) {
     opt.textContent = d;
     select.appendChild(opt);
   });
-}
-
-function renderFlightLegend(legendId) {
-  const el = document.getElementById(legendId);
-  el.innerHTML =
-    currentAirlines.map((a) => `<span><span class="swatch" style="background:${getVar(a.series)}"></span>${a.name}</span>`).join("") ||
-    '<span class="empty-note">No airlines yet</span>';
 }
 
 function renderFlightTableHead(theadId) {
@@ -757,14 +655,12 @@ async function loadDestination(destination) {
 
   for (const fd of FLIGHT_DIRECTIONS) {
     populateDateSelect(fd.dateSelect, fd.dates());
-    renderFlightLegend(fd.ids.legend);
     renderFlightTableHead(fd.ids.tableHead);
     document.getElementById(fd.dateSelect).value = pickDefaultDate(fd);
     await refreshFlight(fd);
   }
 
   populateDateSelect("packageDepartureSelect", allDepartureDates(destination));
-  renderFlightLegend(PACKAGE_IDS.legend);
   renderFlightTableHead(PACKAGE_IDS.tableHead);
   const { dep, nights } = pickDefaultPackage();
   document.getElementById("packageDepartureSelect").value = dep;
