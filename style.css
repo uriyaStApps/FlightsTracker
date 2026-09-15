@@ -447,6 +447,14 @@ svg {
   margin-bottom: 1px;
 }
 
+.mini-chart-value {
+  margin-left: auto;
+  font-size: 0.86rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
 .status-line {
   color: var(--text-muted);
   font-size: 0.78rem;

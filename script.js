@@ -233,7 +233,20 @@ function percentileRange(vals) {
 // adjacent hues (e.g. a blue and a dark indigo-purple) can make easy to
 // mix up (hit this for real: a flat Air France line was read as
 // Scandinavian Airlines/SAS because their line colors sit close together).
-function renderAirlinePanels(containerId, points, labelKey) {
+//
+// Each panel's y-axis is independently scaled (see percentileRange), which
+// makes a series' own shape legible but means vertical POSITION is not
+// comparable across panels -- a cheap airline's one data point sitting near
+// the top of its own narrow range looks "high" even though the dollar
+// figure is lower than airlines whose line sits lower on a wider range
+// (hit for real: SAS's only price, $409, read as "the most expensive"
+// purely from where the dot sat in its own panel, when it was actually
+// cheaper than every other airline shown). `opts.showLatestValue` prints
+// the actual latest number in the header so magnitude never has to be
+// inferred from position -- used for the per-date history panels, where
+// that comparison is meaningful; the by-flight-date trend panels are about
+// shape across dates, not a single "latest" figure, so they skip it.
+function renderAirlinePanels(containerId, points, labelKey, opts = {}) {
   const container = document.getElementById(containerId);
   container.innerHTML = "";
 
@@ -245,7 +258,18 @@ function renderAirlinePanels(containerId, points, labelKey) {
   currentAirlines.forEach((a, idx) => {
     const panel = document.createElement("div");
     panel.className = "mini-chart";
-    panel.innerHTML = `<div class="mini-chart-header"><span class="swatch" style="background:${getVar(a.series)}"></span>${a.name}</div>`;
+    let headerHtml = `<span class="swatch" style="background:${getVar(a.series)}"></span>${a.name}`;
+    if (opts.showLatestValue) {
+      let latest = null;
+      for (let i = points.length - 1; i >= 0; i--) {
+        if (points[i][a.name] != null) {
+          latest = points[i][a.name];
+          break;
+        }
+      }
+      if (latest != null) headerHtml += `<span class="mini-chart-value">$${latest}</span>`;
+    }
+    panel.innerHTML = `<div class="mini-chart-header">${headerHtml}</div>`;
 
     const shell = document.createElement("div");
     shell.className = "chart-shell";
@@ -459,7 +483,7 @@ async function renderOneWayHistory(direction, date, ids) {
 
   statusEl.textContent = `${rows.length} daily samples from ${rows[0].sample_date} to ${rows[rows.length - 1].sample_date}.`;
 
-  renderAirlinePanels(ids.chart, rows, "sample_date");
+  renderAirlinePanels(ids.chart, rows, "sample_date", { showLatestValue: true });
   renderHistoryTable(rows, ids);
 }
 
@@ -553,7 +577,7 @@ async function renderPackageHistory(depDate, retDate) {
 
   statusEl.textContent = `${rows.length} daily samples from ${rows[0].sample_date} to ${rows[rows.length - 1].sample_date}. Departing ${depDate}, returning ${retDate}.`;
 
-  renderAirlinePanels(PACKAGE_IDS.chart, rows, "sample_date");
+  renderAirlinePanels(PACKAGE_IDS.chart, rows, "sample_date", { showLatestValue: true });
   renderHistoryTable(rows, PACKAGE_IDS);
 }
 
