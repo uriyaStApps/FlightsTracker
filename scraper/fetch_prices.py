@@ -191,9 +191,22 @@ def upsert_rows(rows):
         "Content-Profile": SUPABASE_SCHEMA,
         "Prefer": "resolution=merge-duplicates,return=minimal",
     }
-    resp = requests.post(url, headers=headers, data=json.dumps(rows), timeout=60)
-    if resp.status_code >= 300:
-        raise RuntimeError(f"Supabase upsert failed ({resp.status_code}): {resp.text}")
+    # Seen twice now in production: a transient 504 from Supabase, once on
+    # the startup connectivity check (fixed with a retry there) and once
+    # here, on the very last chunk after ~40 minutes of real scraping work --
+    # losing that work to one flaky request is not acceptable.
+    last_error = None
+    for attempt in range(3):
+        if attempt > 0:
+            time.sleep(5 * attempt + random.uniform(0, 3))
+        try:
+            resp = requests.post(url, headers=headers, data=json.dumps(rows), timeout=60)
+            if resp.status_code < 300:
+                return
+            last_error = RuntimeError(f"Supabase upsert failed ({resp.status_code}): {resp.text}")
+        except requests.RequestException as e:
+            last_error = e
+    raise last_error
 
 
 def main():
