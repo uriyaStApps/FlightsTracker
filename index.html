@@ -11,18 +11,19 @@
   <div class="wrap">
     <div class="brand-header">
       <img src="logo.png" alt="Uriya ST logo" class="brand-logo">
-      <div>
+      <div class="brand-text">
         <h1>Flight Tracker</h1>
         <p class="subtitle">Daily one-way fares from Tel Aviv, tracked from ticket-opening until high season &mdash; single-carrier itineraries only, to find the best time to book (a proxy model for 2028 trips).</p>
+      </div>
+      <div class="header-dest">
+        <select id="destinationSelect"></select>
       </div>
     </div>
 
     <div class="card">
-      <div class="controls">
-        <label>Destination
-          <select id="destinationSelect"></select>
-        </label>
-      </div>
+      <h2>Cheapest ever seen</h2>
+      <p class="hint">The lowest one-way fare recorded for each airline since tracking started, across every date checked.</p>
+      <div id="quickStats" class="stats-grid"></div>
     </div>
 
     <div class="card">
@@ -30,13 +31,13 @@
       <p class="hint">Latest snapshot. Each direction is checked and shown independently &mdash; outbound and return don't need to both be priced for a day to show up here.</p>
       <div class="legend" id="heatmapLegend"></div>
 
-      <h3>Outbound (Tel Aviv &rarr; destination)</h3>
+      <h3>Outbound &middot; Tel Aviv &rarr; destination</h3>
       <div class="chart-shell">
         <svg id="heatmapOutbound"></svg>
         <div class="tooltip" id="heatmapTooltip"></div>
       </div>
 
-      <h3>Return (destination &rarr; Tel Aviv)</h3>
+      <h3>Return &middot; destination &rarr; Tel Aviv</h3>
       <div class="chart-shell">
         <svg id="heatmapReturn"></svg>
       </div>
@@ -45,6 +46,7 @@
 
     <div class="card">
       <h2>Pick a trip</h2>
+      <p class="hint">Combine one outbound and one return day into a full round trip.</p>
       <div class="controls">
         <label>Departure date
           <select id="departureSelect"></select>
@@ -65,7 +67,7 @@
       </div>
       <p class="status-line" id="lineStatus"></p>
 
-      <h3>Sampled prices (table)</h3>
+      <h3>Sampled prices &middot; table</h3>
       <p class="hint">Every daily sample for this trip since tracking started, most recent first. Round-trip total per airline.</p>
       <div class="table-shell">
         <table class="history-table">

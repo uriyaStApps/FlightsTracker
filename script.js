@@ -90,6 +90,9 @@ function priceToColor(price, min, max) {
   const t = Math.max(0, Math.min(1, (price - min) / (max - min)));
   return lerpColor(getVar("--seq-100"), getVar("--seq-700"), t);
 }
+function shortName(name, max = 14) {
+  return name.length > max ? name.slice(0, max - 1) + "…" : name;
+}
 
 // ---------- Latest snapshot (for overview + "totals now") ----------
 
@@ -151,6 +154,57 @@ function totalFor(depDate, retDate, airlineName) {
   return out[airlineName] + ret[airlineName];
 }
 
+// ---------- Quick stats (cheapest ever seen, full history) ----------
+
+async function renderQuickStats(destination) {
+  const el = document.getElementById("quickStats");
+  el.innerHTML = '<p class="empty-note">Loading...</p>';
+
+  const { data, error } = await sb
+    .from("one_way_prices")
+    .select("flight_date,direction,prices")
+    .eq("destination", destination)
+    .not("prices", "is", null);
+
+  if (error || !data || !data.length) {
+    el.innerHTML = '<p class="empty-note">No data yet for this destination.</p>';
+    return;
+  }
+
+  const best = {}; // name -> {price, date, direction}
+  for (const row of data) {
+    for (const [name, price] of Object.entries(row.prices || {})) {
+      if (!best[name] || price < best[name].price) {
+        best[name] = { price, date: row.flight_date, direction: row.direction };
+      }
+    }
+  }
+
+  const featured = FEATURED_AIRLINES[destination] || [];
+  const names = Object.keys(best).sort((a, b) => {
+    const fa = featured.indexOf(a);
+    const fb = featured.indexOf(b);
+    if (fa !== -1 || fb !== -1) return (fa === -1 ? 99 : fa) - (fb === -1 ? 99 : fb);
+    return best[a].price - best[b].price;
+  });
+  const shown = names.slice(0, 8);
+
+  el.innerHTML = shown
+    .map((name) => {
+      const b = best[name];
+      const airline = currentAirlines.find((a) => a.name === name);
+      const color = airline ? getVar(airline.series) : getVar("--accent");
+      const dirLabel = b.direction === "OUTBOUND" ? "outbound" : "return";
+      return `
+        <div class="stat-tile" style="--tile-color:${color}">
+          <div class="stat-tile-label">${name}</div>
+          <div class="stat-tile-value">$${b.price}</div>
+          <div class="stat-tile-sub">${dirLabel} &middot; ${b.date}</div>
+        </div>`;
+    })
+    .join("");
+}
+
 // ---------- Heatmap overview ----------
 
 function renderHeatmapLegend() {
@@ -166,7 +220,7 @@ function renderOneWayHeatmap(svgId, dates, dataByDate, directionLabel) {
   const cellW = 900 / dates.length;
   const cellH = 30;
   const rowGap = 4;
-  const labelW = 90;
+  const labelW = 128;
   const svg = document.getElementById(svgId);
 
   if (!currentAirlines.length) {
@@ -200,7 +254,7 @@ function renderOneWayHeatmap(svgId, dates, dataByDate, directionLabel) {
     label.setAttribute("x", 0);
     label.setAttribute("y", rowGap * (rIdx + 1) + cellH * rIdx + cellH / 2 + 4);
     label.setAttribute("class", "heatmap-row-label");
-    label.textContent = a.name;
+    label.textContent = shortName(a.name, 17);
     svg.appendChild(label);
 
     dates.forEach((d, cIdx) => {
@@ -249,6 +303,7 @@ function renderTotalsNow(depDate, retDate) {
     .map(
       (r, i) => `
       <div class="totals-row ${i === 0 ? "totals-row-best" : ""}">
+        <span class="totals-rank">${i + 1}</span>
         <span class="swatch" style="background:${getVar(r.series)}"></span>
         <span class="totals-airline">${r.name}</span>
         <span class="totals-price">$${r.total}</span>
@@ -485,6 +540,20 @@ async function refreshTripDetail() {
   await renderHistory(currentDestination, dep, ret);
 }
 
+// Land on a trip that actually has a priced airline instead of always the
+// first date in the range (which is very likely empty and makes the whole
+// "Pick a trip" section look broken on first load).
+function pickDefaultTrip() {
+  const nights = DURATIONS[0];
+  for (const dep of allDepartureDates(currentDestination)) {
+    const ret = toISO(addDays(new Date(dep), nights));
+    if (currentAirlines.some((a) => totalFor(dep, ret, a.name) != null)) {
+      return { dep, nights };
+    }
+  }
+  return { dep: allDepartureDates(currentDestination)[0], nights };
+}
+
 function renderHeatmaps() {
   renderOneWayHeatmap("heatmapOutbound", allDepartureDates(currentDestination), outboundLatest, "outbound");
   renderOneWayHeatmap("heatmapReturn", allReturnDates(currentDestination), returnLatest, "return");
@@ -496,6 +565,11 @@ async function loadDestination(destination) {
   await loadLatestSnapshot(destination);
   renderDynamicLegends();
   renderHeatmaps();
+  renderQuickStats(destination);
+
+  const { dep, nights } = pickDefaultTrip();
+  document.getElementById("departureSelect").value = dep;
+  document.getElementById("durationSelect2").value = nights;
   await refreshTripDetail();
 }
 
