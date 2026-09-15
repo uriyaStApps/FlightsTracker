@@ -430,12 +430,6 @@ svg {
   position: relative;
 }
 
-.heatmap-row-label {
-  fill: var(--text-secondary);
-  font-size: 11.5px;
-  font-weight: 500;
-}
-
 .status-line {
   color: var(--text-muted);
   font-size: 0.78rem;

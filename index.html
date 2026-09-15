@@ -35,19 +35,20 @@
     </div>
 
     <div class="card">
-      <h2>Cheapest fare by date, each direction</h2>
-      <p class="hint">Latest snapshot. Each direction is checked and shown independently &mdash; outbound and return don't need to both be priced for a day to show up here.</p>
+      <h2>Price by date, each direction</h2>
+      <p class="hint">Latest snapshot &mdash; one line per airline, across every flight date checked. Each direction is checked and shown independently &mdash; outbound and return don't need to both be priced for a day to show up here.</p>
       <div class="legend" id="heatmapLegend"></div>
 
       <h3>Outbound &middot; Tel Aviv &rarr; destination</h3>
       <div class="chart-shell">
         <svg id="heatmapOutbound"></svg>
-        <div class="tooltip" id="heatmapTooltip"></div>
+        <div class="tooltip" id="heatmapTooltipOutbound"></div>
       </div>
 
       <h3>Return &middot; destination &rarr; Tel Aviv</h3>
       <div class="chart-shell">
         <svg id="heatmapReturn"></svg>
+        <div class="tooltip" id="heatmapTooltipReturn"></div>
       </div>
       <p class="status-line" id="heatmapStatus"></p>
     </div>

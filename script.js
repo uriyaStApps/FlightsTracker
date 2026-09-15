@@ -79,17 +79,6 @@ function getVar(name) {
 function svgns(tag) {
   return document.createElementNS("http://www.w3.org/2000/svg", tag);
 }
-function lerpColor(hexA, hexB, t) {
-  const a = hexA.match(/\w\w/g).map((h) => parseInt(h, 16));
-  const b = hexB.match(/\w\w/g).map((h) => parseInt(h, 16));
-  const c = a.map((v, i) => Math.round(v + (b[i] - v) * t));
-  return `rgb(${c[0]},${c[1]},${c[2]})`;
-}
-function priceToColor(price, min, max) {
-  if (min === max) return getVar("--seq-400");
-  const t = Math.max(0, Math.min(1, (price - min) / (max - min)));
-  return lerpColor(getVar("--seq-100"), getVar("--seq-700"), t);
-}
 function shortName(name, max = 14) {
   return name.length > max ? name.slice(0, max - 1) + "…" : name;
 }
@@ -212,83 +201,32 @@ async function renderQuickStats(destination) {
     .join("");
 }
 
-// ---------- Heatmap overview ----------
+// ---------- Trend overview (one line per airline, across every flight date) ----------
 
-function renderHeatmapLegend() {
-  const el = document.getElementById("heatmapLegend");
-  el.innerHTML = `
-    <span><span class="swatch" style="background:${getVar("--seq-100")}"></span>Cheaper</span>
-    <span><span class="swatch" style="background:${getVar("--seq-700")}"></span>More expensive</span>
-    <span><span class="swatch" style="background:${getVar("--gridline")}"></span>No price that day</span>
-  `;
-}
-
-function renderOneWayHeatmap(svgId, dates, dataByDate, directionLabel) {
-  const cellW = 900 / dates.length;
-  const cellH = 30;
-  const rowGap = 4;
-  const labelW = 128;
-  const svg = document.getElementById(svgId);
+function renderOneWayTrend(chartId, tooltipId, dates, dataByDate) {
+  const svg = document.getElementById(chartId);
 
   if (!currentAirlines.length) {
-    svg.setAttribute("viewBox", `0 0 900 60`);
+    svg.setAttribute("viewBox", "0 0 900 80");
     svg.innerHTML = "";
     const t = svgns("text");
     t.setAttribute("x", 10);
-    t.setAttribute("y", 30);
+    t.setAttribute("y", 40);
     t.setAttribute("class", "axis-label");
     t.textContent = "No airline data yet for this destination.";
     svg.appendChild(t);
     return;
   }
 
-  const height = rowGap * (currentAirlines.length + 1) + cellH * currentAirlines.length;
-  const width = labelW + dates.length * cellW;
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.innerHTML = "";
+  const points = dates.map((d) => {
+    const point = { label: d };
+    for (const a of currentAirlines) point[a.name] = dataByDate[d] ? dataByDate[d][a.name] ?? null : null;
+    return point;
+  });
 
-  const pricesByAirlineDate = currentAirlines.map((a) =>
-    dates.map((d) => (dataByDate[d] ? dataByDate[d][a.name] : null) ?? null)
-  );
-  const allVals = pricesByAirlineDate.flat().filter((v) => v != null);
-  const min = allVals.length ? Math.min(...allVals) : 0;
-  const max = allVals.length ? Math.max(...allVals) : 1;
-
-  const tooltip = document.getElementById("heatmapTooltip");
-
-  currentAirlines.forEach((a, rIdx) => {
-    const label = svgns("text");
-    label.setAttribute("x", 0);
-    label.setAttribute("y", rowGap * (rIdx + 1) + cellH * rIdx + cellH / 2 + 4);
-    label.setAttribute("class", "heatmap-row-label");
-    label.textContent = shortName(a.name, 17);
-    svg.appendChild(label);
-
-    dates.forEach((d, cIdx) => {
-      const price = pricesByAirlineDate[rIdx][cIdx];
-      const x = labelW + cIdx * cellW;
-      const y = rowGap * (rIdx + 1) + cellH * rIdx;
-
-      const rect = svgns("rect");
-      rect.setAttribute("x", x);
-      rect.setAttribute("y", y);
-      rect.setAttribute("width", Math.max(cellW - 1, 1));
-      rect.setAttribute("height", cellH);
-      rect.setAttribute("rx", 2);
-      rect.setAttribute("fill", price != null ? priceToColor(price, min, max) : getVar("--gridline"));
-
-      rect.addEventListener("mousemove", (e) => {
-        tooltip.style.display = "block";
-        tooltip.style.left = e.clientX + 12 + "px";
-        tooltip.style.top = e.clientY + 12 + "px";
-        tooltip.textContent = price != null ? `${a.name} - ${directionLabel} ${d}: $${price}` : `${a.name} - ${directionLabel} ${d}: no price that day`;
-      });
-      rect.addEventListener("mouseleave", () => {
-        tooltip.style.display = "none";
-      });
-
-      svg.appendChild(rect);
-    });
+  drawLineChart(points, { chart: chartId, tooltip: tooltipId }, {
+    labelKey: "label",
+    emptyText: "No airline has a price yet for any date in this range.",
   });
 }
 
@@ -377,7 +315,9 @@ function renderHistoryTable(rows, ids) {
   });
 }
 
-function drawLineChart(points, ids) {
+function drawLineChart(points, ids, opts = {}) {
+  const labelKey = opts.labelKey || "sample_date";
+  const emptyText = opts.emptyText || "No airline has a price yet for this date";
   const width = 900;
   const height = 320;
   const margin = { top: 16, right: 16, bottom: 28, left: 52 };
@@ -395,13 +335,26 @@ function drawLineChart(points, ids) {
     t.setAttribute("y", height / 2);
     t.setAttribute("text-anchor", "middle");
     t.setAttribute("class", "axis-label");
-    t.textContent = "No airline has a price yet for this date";
+    t.textContent = emptyText;
     svg.appendChild(t);
     return;
   }
 
-  const minP = Math.min(...allVals) * 0.95;
-  const maxP = Math.max(...allVals) * 1.05;
+  // A robust (percentile-based) range instead of raw min/max: one rare spike
+  // from a thinly-covered airline (e.g. an occasional $1000+ fare) would
+  // otherwise stretch the axis so far that every other airline's real trend
+  // flattens into a thin band at the bottom. The 5th/95th percentiles keep
+  // the axis matched to where the data actually lives; a genuine outlier
+  // still draws (SVGs overflow visibly), it just isn't allowed to set the
+  // scale for everyone else.
+  const sortedVals = [...allVals].sort((a, b) => a - b);
+  const percentile = (p) => {
+    const idx = (sortedVals.length - 1) * p;
+    const lo = Math.floor(idx), hi = Math.ceil(idx);
+    return lo === hi ? sortedVals[lo] : sortedVals[lo] + (sortedVals[hi] - sortedVals[lo]) * (idx - lo);
+  };
+  const minP = percentile(0.05) * 0.95;
+  const maxP = percentile(0.95) * 1.05;
   const x = (i) => margin.left + (innerW * i) / Math.max(points.length - 1, 1);
   const y = (v) => margin.top + innerH - (innerH * (v - minP)) / (maxP - minP);
 
@@ -432,7 +385,7 @@ function drawLineChart(points, ids) {
     label.setAttribute("y", height - margin.bottom + 16);
     label.setAttribute("text-anchor", "middle");
     label.setAttribute("class", "axis-label");
-    label.textContent = points[i].sample_date;
+    label.textContent = points[i][labelKey];
     svg.appendChild(label);
   });
 
@@ -476,7 +429,7 @@ function drawLineChart(points, ids) {
     tooltip.style.left = e.clientX + 12 + "px";
     tooltip.style.top = e.clientY + 12 + "px";
     tooltip.innerHTML =
-      `${p.sample_date}<br>` + currentAirlines.map((a) => `${a.name}: ${p[a.name] != null ? "$" + p[a.name] : "-"}`).join("<br>");
+      `${p[labelKey]}<br>` + currentAirlines.map((a) => `${a.name}: ${p[a.name] != null ? "$" + p[a.name] : "-"}`).join("<br>");
   });
   hitArea.addEventListener("mouseleave", () => {
     tooltip.style.display = "none";
@@ -661,8 +614,9 @@ function pickDefaultDate(fd) {
 }
 
 function renderHeatmaps() {
-  renderOneWayHeatmap("heatmapOutbound", allDepartureDates(currentDestination), outboundLatest, "outbound");
-  renderOneWayHeatmap("heatmapReturn", allReturnDates(currentDestination), returnLatest, "return");
+  renderFlightLegend("heatmapLegend");
+  renderOneWayTrend("heatmapOutbound", "heatmapTooltipOutbound", allDepartureDates(currentDestination), outboundLatest);
+  renderOneWayTrend("heatmapReturn", "heatmapTooltipReturn", allReturnDates(currentDestination), returnLatest);
 }
 
 async function loadDestination(destination) {
@@ -690,7 +644,6 @@ async function loadDestination(destination) {
 
 async function init() {
   populateStaticSelects();
-  renderHeatmapLegend();
 
   document.getElementById("destinationSelect").addEventListener("change", (e) => loadDestination(e.target.value));
   FLIGHT_DIRECTIONS.forEach((fd) => {
