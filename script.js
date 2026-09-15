@@ -260,8 +260,8 @@ function renderSmallMultiples(containerId, dates, dataByDate) {
 
 function drawSingleSeriesChart(svg, tooltip, points, airline, showAxisLabels) {
   const width = 900;
-  const height = 140;
-  const margin = { top: 10, right: 12, bottom: showAxisLabels ? 22 : 6, left: 52 };
+  const height = 60;
+  const margin = { top: 6, right: 10, bottom: showAxisLabels ? 16 : 4, left: 44 };
   const innerW = width - margin.left - margin.right;
   const innerH = height - margin.top - margin.bottom;
 

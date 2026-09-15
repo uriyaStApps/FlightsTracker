@@ -433,7 +433,7 @@ svg {
 .mini-chart-grid {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   margin-bottom: 8px;
 }
 
@@ -441,10 +441,10 @@ svg {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 600;
   color: var(--text-secondary);
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 
 .status-line {
