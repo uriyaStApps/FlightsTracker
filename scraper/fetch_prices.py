@@ -64,7 +64,7 @@ ALL_KNOWN_AIRLINES = [
     "ITA Airways", "TAP AIR PORTUGAL", "TAROM", "Aegean Airlines", "airBaltic",
     "Norwegian", "Ryanair", "Wizz Air", "Emirates", "Etihad Airways",
     "Ethiopian Air", "flydubai", "Sky Express", "British Airways", "Delta",
-    "United", "American Airlines", "Virgin Atlantic", "JetBlue", "Air Canada",
+    "United Airlines", "American Airlines", "Virgin Atlantic", "JetBlue", "Air Canada",
     "Alaska Airlines", "Hawaiian Airlines", "Norse Atlantic Airways",
     "Condor", "Finnair", "Icelandair", "Turkish Airlines", "Qatar Airways",
 ]
