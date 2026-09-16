@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flight Tracker</title>
 <link rel="icon" href="logo.png">
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
   <div class="wrap">
@@ -23,6 +23,7 @@
       <div id="quickStats" class="stats-grid"></div>
     </div>
 
+    <div class="tab-layout">
     <div class="tab-bar" id="tabBar" role="tablist">
       <button class="tab-btn" data-tab="heatmap" role="tab">Price by date,<br>each direction</button>
       <button class="tab-btn" data-tab="outbound" role="tab">Outbound flight<br>Tel Aviv &rarr; destination</button>
@@ -31,6 +32,7 @@
       <button class="tab-btn" data-tab="tables" role="tab">Sampled prices<br>&middot; table</button>
     </div>
 
+    <div class="tab-panels">
     <div class="card tab-panel" data-panel="heatmap">
       <h2>Price by date, each direction</h2>
       <p class="hint">Latest snapshot &mdash; one small chart per airline, so each airline's own trend is readable on its own instead of six crossing lines. Each point is one flight date, checked once by the daily job (not multiple checks per day) &mdash; day-to-day zigzags are real fare differences between neighboring flight dates. Each direction is checked and shown independently &mdash; outbound and return don't need to both be priced for a day to show up here.</p>
@@ -125,9 +127,11 @@
         </table>
       </div>
     </div>
+    </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="script.js?v=11"></script>
+  <script src="script.js?v=12"></script>
 </body>
 </html>

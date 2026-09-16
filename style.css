@@ -138,73 +138,103 @@ body {
   }
 }
 
-/* ---------- Tab bar ---------- */
+/* ---------- Tab layout: a vertical sidebar next to the content ---------- */
 
-/* A horizontally-scrolling single row instead of a wrapping grid -- a grid
-   of 5 square tiles leaves an orphaned tile (and a dead gap beside it) in
-   the last row at any width that doesn't divide evenly, and reads as a
-   tall stacked block rather than a bar. A scroll strip never wraps, so
-   there's never a partially-empty row: it just scrolls on narrow screens,
-   same as any app's tab strip. */
+/* Uriya wants a sidebar, not a horizontal strip -- nav and content sit
+   side by side so the page doesn't need a whole extra row just for
+   navigation, and switching sections doesn't require scrolling past it
+   again. Below the sidebar breakpoint there isn't room for a persistent
+   side column, so it becomes a horizontal scroll strip above the content
+   instead (see the media query) -- same tab buttons, just re-flowed. */
+.tab-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
 .tab-bar {
   display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  scrollbar-width: thin;
-  margin-bottom: 16px;
-  padding-bottom: 6px;
-  -webkit-overflow-scrolling: touch;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 208px;
+  position: sticky;
+  top: 16px;
 }
 
-.tab-bar::-webkit-scrollbar {
-  height: 5px;
-}
-
-.tab-bar::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 3px;
+.tab-panels {
+  flex: 1;
+  min-width: 0;
 }
 
 .tab-btn {
-  flex: 0 0 auto;
-  min-width: 132px;
-  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 13px 14px;
+  border-left: 3px solid transparent;
+  border-radius: 10px;
+  padding: 12px 14px;
   font-family: inherit;
   font-size: 0.78rem;
   font-weight: 650;
   line-height: 1.35;
   color: var(--text-secondary);
-  text-align: center;
+  text-align: left;
   cursor: pointer;
   box-shadow: var(--shadow-sm);
-  transition: border-color 0.15s, color 0.15s, background 0.15s, transform 0.15s;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 
 .tab-btn:hover {
   border-color: var(--border-strong);
+  border-left-color: var(--border-strong);
   color: var(--text-primary);
-  transform: translateY(-1px);
 }
 
 .tab-btn.active {
   background: color-mix(in srgb, var(--accent) 9%, var(--surface));
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-left-color: var(--accent);
   color: var(--accent);
 }
 
-.tab-btn.active::after {
-  content: "";
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: -1px;
-  height: 2.5px;
-  border-radius: 2px;
-  background: var(--accent);
+@media (max-width: 760px) {
+  .tab-layout {
+    flex-direction: column;
+  }
+
+  .tab-bar {
+    flex-direction: row;
+    flex: 0 0 auto;
+    width: 100%;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    padding-bottom: 6px;
+    position: static;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab-bar::-webkit-scrollbar {
+    height: 5px;
+  }
+
+  .tab-bar::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 3px;
+  }
+
+  .tab-btn {
+    flex: 0 0 auto;
+    min-width: 132px;
+    text-align: center;
+    border-left: 1px solid var(--border);
+    border-bottom: 3px solid transparent;
+  }
+
+  .tab-btn.active {
+    border-left-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    border-bottom-color: var(--accent);
+  }
 }
 
 .tab-panel[hidden] {
