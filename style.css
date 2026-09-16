@@ -140,18 +140,39 @@ body {
 
 /* ---------- Tab bar ---------- */
 
+/* A horizontally-scrolling single row instead of a wrapping grid -- a grid
+   of 5 square tiles leaves an orphaned tile (and a dead gap beside it) in
+   the last row at any width that doesn't divide evenly, and reads as a
+   tall stacked block rather than a bar. A scroll strip never wraps, so
+   there's never a partially-empty row: it just scrolls on narrow screens,
+   same as any app's tab strip. */
 .tab-bar {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  display: flex;
   gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
   margin-bottom: 16px;
+  padding-bottom: 6px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tab-bar::-webkit-scrollbar {
+  height: 5px;
+}
+
+.tab-bar::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
 }
 
 .tab-btn {
+  flex: 0 0 auto;
+  min-width: 132px;
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 14px 10px;
+  padding: 13px 14px;
   font-family: inherit;
   font-size: 0.78rem;
   font-weight: 650;
@@ -160,18 +181,30 @@ body {
   text-align: center;
   cursor: pointer;
   box-shadow: var(--shadow-sm);
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition: border-color 0.15s, color 0.15s, background 0.15s, transform 0.15s;
 }
 
 .tab-btn:hover {
   border-color: var(--border-strong);
   color: var(--text-primary);
+  transform: translateY(-1px);
 }
 
 .tab-btn.active {
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
   color: var(--accent);
+}
+
+.tab-btn.active::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: -1px;
+  height: 2.5px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 
 .tab-panel[hidden] {
