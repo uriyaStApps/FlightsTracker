@@ -5,28 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flight Tracker</title>
 <link rel="icon" href="logo.png">
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
   <div class="wrap">
     <div class="hero">
-      <div class="hero-sky"></div>
-      <div class="hero-mountains"></div>
-      <div class="hero-plane" aria-hidden="true">
-        <svg viewBox="0 0 64 64" class="hero-plane-icon"><path d="M62 32 38 24 24 4l-6 2 8 20-16-2-6-6-5 2 6 10 6 10 5-2-3-8 16 4 12 16 6-2-8-20z"/></svg>
-      </div>
+      <img src="hero.jpg" alt="Flights Tracker" class="hero-photo">
       <div class="hero-dest">
         <select id="destinationSelect"></select>
       </div>
-      <div class="hero-content">
-        <div class="hero-title-row">
-          <img src="logo.png" alt="Uriya ST logo" class="hero-logo">
-          <h1>Flights Tracker</h1>
-        </div>
-        <p class="hero-tagline">Explore &middot; Track &middot; Discover &mdash; a brighter journey ahead</p>
-        <p class="subtitle">Daily one-way fares from Tel Aviv, tracked from ticket-opening until high season &mdash; single-carrier itineraries only, to find the best time to book (a proxy model for 2028 trips).</p>
-      </div>
     </div>
+    <p class="hero-subtitle">Daily one-way fares from Tel Aviv, tracked from ticket-opening until high season &mdash; single-carrier itineraries only, to find the best time to book (a proxy model for 2028 trips).</p>
 
     <div class="card">
       <h2>Cheapest ever seen</h2>
@@ -128,6 +117,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="script.js?v=8"></script>
+  <script src="script.js?v=9"></script>
 </body>
 </html>
