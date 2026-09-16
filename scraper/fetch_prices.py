@@ -35,9 +35,11 @@ DURATIONS_NIGHTS = [10, 11, 12, 13, 14]
 
 # Each destination owns its own trip window -- add a new one at any time with
 # whatever month makes sense for it, and tracking starts from that moment
-# (today) forward, independent of every other destination. Tracking for a
-# destination stops once its own trip_start arrives (see project_end() below)
-# -- the point is learning the lead-up behavior, not the travel month itself.
+# (today) forward, independent of every other destination. Each individual
+# flight_date keeps being tracked right up through its own final day (see
+# build_flight_dates()/project_end() below), not until the season as a whole
+# begins -- the point is the full lead-up curve for every tracked date, not
+# just the first one.
 #
 # outbound_start / outbound_end: the range of possible outbound flight dates
 # (the target travel month, or a range spanning it).
@@ -51,8 +53,22 @@ DESTINATIONS = {
 
 
 def project_end(destination: str) -> date:
-    """Tracking for a destination stops once its own trip window begins."""
-    return DESTINATIONS[destination]["outbound_start"]
+    """Tracking for a destination stops once every date in its own range has
+    departed -- the LAST return date, not the day the season merely begins.
+
+    This used to return outbound_start, on the theory that once the season
+    begins there's nothing more to "lead up" to. That's wrong: outbound_start
+    is only the START of the tracked range (May 1 2027), while the range
+    extends to outbound_end + 14 nights (mid-July 2027 for the return leg).
+    Stopping at outbound_start meant every date except the very first one
+    (May 1 itself) never got its own close-in data (the last 60-90+ days
+    before ITS OWN departure) -- June/July dates would still be ~2 months out
+    on the day tracking stopped entirely. The actual goal (see the restated
+    purpose) is the full price curve from ticket-opening down to 0 days out,
+    for every tracked date, not just the earliest one -- see build_flight_dates
+    below for the matching per-date cutoff that makes that possible."""
+    info = DESTINATIONS[destination]
+    return info["outbound_end"] + timedelta(days=max(DURATIONS_NIGHTS))
 
 # Airlines seen across these routes, needed so a card mentioning two of these
 # names is correctly recognized as a mixed/interline itinerary and excluded,
@@ -79,7 +95,13 @@ MIN_SLEEP_SECONDS = 1.5
 MAX_SLEEP_SECONDS = 3.0
 
 
-def build_flight_dates(destination: str):
+def build_flight_dates(destination: str, today: date):
+    """Every (flight_date, direction) pair still worth checking as of today --
+    i.e. every date that hasn't departed yet. As real days pass, dates fall out
+    of this list one at a time (each one keeps being tracked right up through
+    its own final day), instead of the whole destination cutting off at once
+    on a single fixed calendar date. That's what gives every tracked date a
+    full price curve down to 0 days out, not just the earliest one."""
     outbound_start = DESTINATIONS[destination]["outbound_start"]
     outbound_end = DESTINATIONS[destination]["outbound_end"]
     return_start = outbound_start + timedelta(days=min(DURATIONS_NIGHTS))
@@ -88,11 +110,13 @@ def build_flight_dates(destination: str):
     pairs = []
     d = outbound_start
     while d <= outbound_end:
-        pairs.append((d, "OUTBOUND"))
+        if d >= today:
+            pairs.append((d, "OUTBOUND"))
         d += timedelta(days=1)
     d = return_start
     while d <= return_end:
-        pairs.append((d, "RETURN"))
+        if d >= today:
+            pairs.append((d, "RETURN"))
         d += timedelta(days=1)
     return pairs
 
@@ -227,7 +251,7 @@ def main():
         print(f"Today ({today}) is past {destination}'s project end date ({end}). Nothing to do.")
         return
 
-    flight_dates = build_flight_dates(destination)
+    flight_dates = build_flight_dates(destination, today)
     random.shuffle(flight_dates)  # spread any transient slowness across both directions, not just the second half
     print(f"Today: {today}. Destination: {destination} ({DESTINATIONS[destination]['name']}). "
           f"Querying {len(flight_dates)} one-way (date, direction) pairs via Kayak.")
