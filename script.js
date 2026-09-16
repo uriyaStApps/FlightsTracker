@@ -692,8 +692,29 @@ async function loadDestination(destination) {
   await refreshPackage();
 }
 
+// Everything below "Cheapest ever seen" used to be five always-stacked
+// cards, making the page very long to scroll through. Uriya asked for a
+// tab bar instead, one square per section, with only one section's content
+// in the page at a time -- "Cheapest ever seen" stays outside the tabs
+// since he wants it always visible.
+function initTabs() {
+  const buttons = document.querySelectorAll(".tab-btn");
+  const panels = document.querySelectorAll(".tab-panel");
+
+  function activate(tabId) {
+    buttons.forEach((b) => b.classList.toggle("active", b.dataset.tab === tabId));
+    panels.forEach((p) => {
+      p.hidden = p.dataset.panel !== tabId;
+    });
+  }
+
+  buttons.forEach((b) => b.addEventListener("click", () => activate(b.dataset.tab)));
+  activate(buttons[0].dataset.tab);
+}
+
 async function init() {
   populateStaticSelects();
+  initTabs();
 
   document.getElementById("destinationSelect").addEventListener("change", (e) => loadDestination(e.target.value));
   FLIGHT_DIRECTIONS.forEach((fd) => {

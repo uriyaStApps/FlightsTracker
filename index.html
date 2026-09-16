@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flight Tracker</title>
 <link rel="icon" href="logo.png">
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
   <div class="wrap">
@@ -23,7 +23,15 @@
       <div id="quickStats" class="stats-grid"></div>
     </div>
 
-    <div class="card">
+    <div class="tab-bar" id="tabBar" role="tablist">
+      <button class="tab-btn" data-tab="heatmap" role="tab">Price by date,<br>each direction</button>
+      <button class="tab-btn" data-tab="outbound" role="tab">Outbound flight<br>Tel Aviv &rarr; destination</button>
+      <button class="tab-btn" data-tab="return" role="tab">Return flight<br>destination &rarr; Tel Aviv</button>
+      <button class="tab-btn" data-tab="package" role="tab">Trip<br>packages</button>
+      <button class="tab-btn" data-tab="tables" role="tab">Sampled prices<br>&middot; table</button>
+    </div>
+
+    <div class="card tab-panel" data-panel="heatmap">
       <h2>Price by date, each direction</h2>
       <p class="hint">Latest snapshot &mdash; one small chart per airline, so each airline's own trend is readable on its own instead of six crossing lines. Each point is one flight date, checked once by the daily job (not multiple checks per day) &mdash; day-to-day zigzags are real fare differences between neighboring flight dates. Each direction is checked and shown independently &mdash; outbound and return don't need to both be priced for a day to show up here.</p>
 
@@ -35,7 +43,7 @@
       <p class="status-line" id="heatmapStatus"></p>
     </div>
 
-    <div class="card">
+    <div class="card tab-panel" data-panel="outbound">
       <h2>Outbound flight &middot; Tel Aviv &rarr; destination</h2>
       <p class="hint">One date, on its own &mdash; not combined with any return flight.</p>
       <div class="controls">
@@ -50,18 +58,9 @@
       <h3>Price over time</h3>
       <div id="outboundChart" class="mini-chart-grid"></div>
       <p class="status-line" id="outboundStatus"></p>
-
-      <h3>Sampled prices &middot; table</h3>
-      <p class="hint">Every daily sample for this date since tracking started, most recent first.</p>
-      <div class="table-shell">
-        <table class="history-table">
-          <thead id="outboundTableHead"></thead>
-          <tbody id="outboundTableBody"></tbody>
-        </table>
-      </div>
     </div>
 
-    <div class="card">
+    <div class="card tab-panel" data-panel="return">
       <h2>Return flight &middot; destination &rarr; Tel Aviv</h2>
       <p class="hint">One date, on its own &mdash; not combined with any outbound flight.</p>
       <div class="controls">
@@ -76,17 +75,9 @@
       <h3>Price over time</h3>
       <div id="returnChart" class="mini-chart-grid"></div>
       <p class="status-line" id="returnStatus"></p>
-
-      <h3>Sampled prices &middot; table</h3>
-      <p class="hint">Every daily sample for this date since tracking started, most recent first.</p>
-      <div class="table-shell">
-        <table class="history-table">
-          <thead id="returnTableHead"></thead>
-          <tbody id="returnTableBody"></tbody>
-        </table>
-      </div>
     </div>
-    <div class="card">
+
+    <div class="card tab-panel" data-panel="package">
       <h2>Trip packages</h2>
       <p class="hint">Combines an outbound date and a return date into a round-trip total, built entirely from the one-way prices already tracked above &mdash; no new checks, just addition.</p>
       <div class="controls">
@@ -104,9 +95,29 @@
       <h3>Price over time</h3>
       <div id="packageChart" class="mini-chart-grid"></div>
       <p class="status-line" id="packageStatus"></p>
+    </div>
 
-      <h3>Sampled prices &middot; table</h3>
-      <p class="hint">Every daily sample for this round trip since tracking started, most recent first.</p>
+    <div class="card tab-panel" data-panel="tables">
+      <h2>Sampled prices &middot; table</h2>
+      <p class="hint">Every daily sample since tracking started, most recent first, for whichever date is currently selected in the Outbound / Return / Trip packages tabs.</p>
+
+      <h3>Outbound &middot; Tel Aviv &rarr; destination</h3>
+      <div class="table-shell">
+        <table class="history-table">
+          <thead id="outboundTableHead"></thead>
+          <tbody id="outboundTableBody"></tbody>
+        </table>
+      </div>
+
+      <h3>Return &middot; destination &rarr; Tel Aviv</h3>
+      <div class="table-shell">
+        <table class="history-table">
+          <thead id="returnTableHead"></thead>
+          <tbody id="returnTableBody"></tbody>
+        </table>
+      </div>
+
+      <h3>Trip packages</h3>
       <div class="table-shell">
         <table class="history-table">
           <thead id="packageTableHead"></thead>
@@ -117,6 +128,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="script.js?v=9"></script>
+  <script src="script.js?v=10"></script>
 </body>
 </html>
